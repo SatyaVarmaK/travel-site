@@ -1,0 +1,1012 @@
+chip_list: [0, 1, 2, 3, 4, 5, 6, 7]  #List of Chip IDs to be test
+smoke_test:
+  cmd: 'smoke_nexus --nocapture --test "" --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:<device_instance_num>'
+  expected_result: ok
+  expected_passed_count: 21
+  expected_failed_count: 0
+
+device_info:
+  cmd: 'nexus_bootstrap device-info'
+  device_0:
+    chip_id: 0
+    numa: 0
+    m7_fw: "3.0.9"
+    m7_state: "MainPollingLoop"
+    a53_fw: "2026.05.07.0"
+    a53_state: "Ready"
+    a53_error_code: "N/A"
+    a53_error: "N/A"
+    PCIe_Gen: "Gen5"
+    PCIe_Width: "x16"
+  device_1:
+    chip_id: 1
+    numa: 0
+    m7_fw: "3.0.9"
+    m7_state: "MainPollingLoop"
+    a53_fw: "2026.05.07.0"
+    a53_state: "Ready"
+    a53_error_code: "N/A"
+    a53_error: "N/A"
+    PCIe_Gen: "Gen5"
+    PCIe_Width: "x16"
+  device_2:
+    chip_id: 2
+    numa: 0
+    m7_fw: "3.0.9"
+    m7_state: "MainPollingLoop"
+    a53_fw: "2026.05.07.0"
+    a53_state: "Ready"
+    a53_error_code: "N/A"
+    a53_error: "N/A"
+    PCIe_Gen: "Gen5"
+    PCIe_Width: "x16"
+  device_3:
+    chip_id: 3
+    numa: 0
+    m7_fw: "3.0.9"
+    m7_state: "MainPollingLoop"
+    a53_fw: "2026.05.07.0"
+    a53_state: "Ready"
+    a53_error_code: "N/A"
+    a53_error: "N/A"
+    PCIe_Gen: "Gen5"
+    PCIe_Width: "x16"
+  device_4:
+    chip_id: 4
+    numa: 1
+    m7_fw: "3.0.9"
+    m7_state: "MainPollingLoop"
+    a53_fw: "2026.05.07.0"
+    a53_state: "Ready"
+    a53_error_code: "N/A"
+    a53_error: "N/A"
+    PCIe_Gen: "Gen5"
+    PCIe_Width: "x16"
+  device_5:
+    numa: 1
+    m7_fw: "3.0.9"
+    m7_state: "MainPollingLoop"
+    a53_fw: "2026.05.07.0"
+    a53_state: "Ready"
+    a53_error_code: "N/A"
+    a53_error: "N/A"
+    PCIe_Gen: "Gen5"
+    PCIe_Width: "x16"
+  device_6:
+    numa: 1
+    m7_fw: "3.0.9"
+    m7_state: "MainPollingLoop"
+    a53_fw: "2026.05.07.0"
+    a53_state: "Ready"
+    a53_error_code: "N/A"
+    a53_error: "N/A"
+    PCIe_Gen: "Gen5"
+    PCIe_Width: "x16"
+  device_7:
+    chip_id: 7
+    numa: 1
+    m7_fw: "3.0.9"
+    m7_state: "MainPollingLoop"
+    a53_fw: "2026.05.07.0"
+    a53_state: "Ready"
+    a53_error_code: "N/A"
+    a53_error: "N/A"
+    PCIe_Gen: "Gen5"
+    PCIe_Width: "x16"
+
+stv_sensor:
+  temperature:
+    cmd: 'nexus_sniff --backend vfio --device-instance chip_id:<device_instance_num> read-sensor --metric temperature' # Add "<device_instance_num>" where it will loop for all the device instance provided
+    sensors:
+      - name: "lexus_vtmon.max3ss.temperature"
+        lower_limit: 0
+        upper_limit: 120
+      - name: "lexus_vtmon.pcie_phy.temperature"
+        lower_limit: 0
+        upper_limit: 120
+      - name: "lexus_vtmon.port_macro_0.temperature"
+        lower_limit: 0
+        upper_limit: 120
+      - name: "lexus_vtmon.port_macro_1.temperature"
+        lower_limit: 0
+        upper_limit: 120
+      - name: "lexus_vtmon.port_macro_2.temperature"
+        lower_limit: 0
+        upper_limit: 120
+      - name: "lexus_vtmon.port_macro_3.temperature"
+        lower_limit: 0
+        upper_limit: 120
+      - name: "lexus_vtmon.east_pads.temperature"
+        lower_limit: 0
+        upper_limit: 120
+  voltage:
+    cmd: 'nexus_sniff --backend vfio --device-instance chip_id:<device_instance_num> read-sensor --metric voltage'
+    sensors:
+      - name: "vr.c_vdd.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.uc_vdd.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.hbm_vddc.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.vddq_e.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.hbm_vddphy.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.vddql_e.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.hbm_vddc.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.vddq_w.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.hbm_vddphy.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "vr.vddql_w.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "lexus_vtmon.max3ss.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "lexus_vtmon.pcie_phy.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "lexus_vtmon.port_macro_0.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "lexus_vtmon.port_macro_1.voltage"
+        lower_limit: 0
+        upper_limit: 5
+      - name: "lexus_vtmon.port_macro_2.voltage"
+        lower_limit: 0
+        upper_limit: 5
+  current:
+    cmd: 'nexus_sniff --backend vfio --device-instance chip_id:<device_instance_num> read-sensor --metric current'
+    sensors:
+      - name: "vr.c_vdd.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.uc_vdd.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.hbm_vddc.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.vddq_e.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.hbm_vddphy.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.vddql_e.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.hbm_vddc.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.vddq_w.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.hbm_vddphy.current"
+        lower_limit: 0
+        upper_limit: 50
+      - name: "vr.vddql_w.current"
+        lower_limit: 0
+        upper_limit: 50
+
+log_check:
+  display_log_cmd: 'timeout 10s nexus_sniff  --backend vfio --device-instance chip_id:<device_instance_num> dump-logs || true'
+  display_error_logs: "grep -i -E 'not found|error|not present|Unknown|absent|failed'"
+  ignore_error_type_list: []
+
+check_pcie_aer:
+  pcie_aer_cmd: 'pcie_aer --dma-size-bytes 65536'
+
+rni_link_check:
+  physical_port_statistics_cmd: 'nexus_sniff --device-instance chip_id:<device_instance_num> physical-layer-stats'
+  link_layer_statistics_cmd: 'nexus_sniff --device-instance chip_id:<device_instance_num> link-layer-stats'
+  rni_port_test_script: |
+    #!/bin/sh
+    set -e
+
+    UNIQUE_SEED=$(od -An -tx8 -N8 /dev/urandom 2>/dev/null | tr -d '[:space:]')
+
+    for chip in {chip_list}; do
+        CHIP_NAME="${UNIQUE_SEED}:${chip}"
+
+        set -- \
+            --chip-name "${CHIP_NAME}" \
+            --device-instance "chip_id:$chip" \
+            --iterations 1 \
+            --dwell-time 10s \
+            --samples-per-iteration 1 \
+            --shutdown-delay 5s \
+            --loopback-filter same-port
+
+        case $chip in
+            0|2|4|6)
+                for port in 0 1 2 3 8 9 10 11; do
+                    remote=$((port + 4))
+                    set -- "$@" --link-filter "${CHIP_NAME}.${port}>${CHIP_NAME}.${remote}"
+                done
+                ;;
+            1|3|5|7)
+                for port in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+                    set -- "$@" --link-filter "${CHIP_NAME}.${port}>${CHIP_NAME}.${port}"
+                done
+                ;;
+        esac
+
+        # run the hotpackets command
+        >chip${chip}_rni.csv hotpackets "$@" &
+    done
+
+    printf "\n\nList of Hotpackets Processes Running...\n"
+    pgrep -a hotpackets
+
+    printf "\n\nWaiting for processes to finish...\n"
+    wait
+
+    printf "\n\n--- RNI Link Check Results ---\n"
+    for chip in {chip_list}; do
+        FILENAME="chip${chip}_rni.csv"
+        printf "\n--- Results for $FILENAME ---"
+        if [ -s "$FILENAME" ]; then
+            cat "$FILENAME"
+        else
+            echo "Warning: $FILENAME is empty. Check if 'hotpackets' command is valid."
+        fi
+        echo ""
+    done
+
+stv_firmware:
+  cmd: ""
+  current_version: ""
+  reset_sleep_time: ""
+  fw_upgrade:
+    fw_upgrade_image_path: ""
+    fw_upgrade_version: ""
+  fw_downgrade:
+    fw_downgrade_image_path: ""
+    fw_downgrade_version: ""
+
+ENABLED_PCIE_DEVICES:
+- ALL: True
+
+PCIE_TREE:
+- ROOT_BUS: ROOT_BUS
+  bus_id: '00'
+  children:
+  - device: Turin GPP Bridge
+    device_class: PCI bridge
+    Express_Type: Root Port (Slot+)
+    LnkCap_Speed: 32GT/s
+    LnkCap_Width: x16
+    LnkSta_Speed: 32GT/s
+    LnkSta_Width: x16
+    numanode: '0'
+    subsystem_device: Device 1453
+    subsystem_vendor: Advanced Micro Devices, Inc. [AMD]
+    vendor: Advanced Micro Devices, Inc. [AMD]
+    children:
+    - device: Device c040
+      device_class: PCI bridge
+      Express_Type: Upstream Port
+      LnkCap_Speed: 64GT/s
+      LnkCap_Width: x16
+      LnkSta_Speed: 32GT/s
+      LnkSta_Speed_Qualifier: (downgraded)
+      LnkSta_Width: x16
+      numanode: '0'
+      subsystem_device: Device 0104
+      subsystem_vendor: Broadcom / LSI
+      vendor: Broadcom / LSI
+      children:
+      - device: Device c040
+        device_class: PCI bridge
+        Express_Type: Downstream Port (Slot+)
+        LnkCap_Speed: 64GT/s
+        LnkCap_Width: x16
+        LnkSta_Speed: 32GT/s
+        LnkSta_Width: x16
+        numanode: '0'
+        subsystem_device: Device 0104
+        subsystem_vendor: Broadcom / LSI
+        vendor: Broadcom / LSI
+        children:
+        - device: Device 4a00
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a00
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a10
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a10
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a01
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a01
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+- ROOT_BUS: ROOT_BUS
+  bus_id: '10'
+  children:
+  - device: Turin GPP Bridge
+    device_class: PCI bridge
+    Express_Type: Root Port (Slot+)
+    LnkCap_Speed: 32GT/s
+    LnkCap_Width: x16
+    LnkSta_Speed: 32GT/s
+    LnkSta_Width: x16
+    numanode: '0'
+    subsystem_device: Device 1453
+    subsystem_vendor: Advanced Micro Devices, Inc. [AMD]
+    vendor: Advanced Micro Devices, Inc. [AMD]
+    children:
+    - device: Device c040
+      device_class: PCI bridge
+      Express_Type: Upstream Port
+      LnkCap_Speed: 64GT/s
+      LnkCap_Width: x16
+      LnkSta_Speed: 32GT/s
+      LnkSta_Speed_Qualifier: (downgraded)
+      LnkSta_Width: x16
+      numanode: '0'
+      subsystem_device: Device 0104
+      subsystem_vendor: Broadcom / LSI
+      vendor: Broadcom / LSI
+      children:
+      - device: Device c040
+        device_class: PCI bridge
+        Express_Type: Downstream Port (Slot+)
+        LnkCap_Speed: 64GT/s
+        LnkCap_Width: x16
+        LnkSta_Speed: 32GT/s
+        LnkSta_Width: x16
+        numanode: '0'
+        subsystem_device: Device 0104
+        subsystem_vendor: Broadcom / LSI
+        vendor: Broadcom / LSI
+        children:
+        - device: Device 4a00
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a00
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a10
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a10
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a01
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a01
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+- ROOT_BUS: ROOT_BUS
+  bus_id: '20'
+- ROOT_BUS: ROOT_BUS
+  bus_id: '30'
+- ROOT_BUS: ROOT_BUS
+  bus_id: '40'
+- ROOT_BUS: ROOT_BUS
+  bus_id: '50'
+- ROOT_BUS: ROOT_BUS
+  bus_id: '60'
+  children:
+  - device: Turin GPP Bridge
+    device_class: PCI bridge
+    Express_Type: Root Port (Slot+)
+    LnkCap_Speed: 32GT/s
+    LnkCap_Width: x16
+    LnkSta_Speed: 32GT/s
+    LnkSta_Width: x16
+    numanode: '0'
+    subsystem_device: Device 1453
+    subsystem_vendor: Advanced Micro Devices, Inc. [AMD]
+    vendor: Advanced Micro Devices, Inc. [AMD]
+    children:
+    - device: Device c040
+      device_class: PCI bridge
+      bdf: '61:00.0'
+      Express_Type: Upstream Port
+      LnkCap_Speed: 64GT/s
+      LnkCap_Width: x16
+      LnkSta_Speed: 32GT/s
+      LnkSta_Speed_Qualifier: (downgraded)
+      LnkSta_Width: x16
+      numanode: '0'
+      subsystem_device: Device 0104
+      subsystem_vendor: Broadcom / LSI
+      vendor: Broadcom / LSI
+      children:
+      - device: Device c040
+        device_class: PCI bridge
+        Express_Type: Downstream Port (Slot+)
+        LnkCap_Speed: 64GT/s
+        LnkCap_Width: x16
+        LnkSta_Speed: 32GT/s
+        LnkSta_Width: x16
+        numanode: '0'
+        subsystem_device: Device 0104
+        subsystem_vendor: Broadcom / LSI
+        vendor: Broadcom / LSI
+        children:
+        - device: Device 4a00
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a00
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a10
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a10
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a01
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a01
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+- ROOT_BUS: ROOT_BUS
+  bus_id: '70'
+  children:
+  - device: Turin GPP Bridge
+    device_class: PCI bridge
+    Express_Type: Root Port (Slot+)
+    LnkCap_Speed: 32GT/s
+    LnkCap_Width: x16
+    LnkSta_Speed: 32GT/s
+    LnkSta_Width: x16
+    numanode: '0'
+    subsystem_device: Device 1453
+    subsystem_vendor: Advanced Micro Devices, Inc. [AMD]
+    vendor: Advanced Micro Devices, Inc. [AMD]
+    children:
+    - device: Device c040
+      device_class: PCI bridge
+      Express_Type: Upstream Port
+      LnkCap_Speed: 64GT/s
+      LnkCap_Width: x16
+      LnkSta_Speed: 32GT/s
+      LnkSta_Speed_Qualifier: (downgraded)
+      LnkSta_Width: x16
+      numanode: '0'
+      subsystem_device: Device 0104
+      subsystem_vendor: Broadcom / LSI
+      vendor: Broadcom / LSI
+      children:
+      - device: Device c040
+        device_class: PCI bridge
+        Express_Type: Downstream Port (Slot+)
+        LnkCap_Speed: 64GT/s
+        LnkCap_Width: x16
+        LnkSta_Speed: 32GT/s
+        LnkSta_Width: x16
+        numanode: '0'
+        subsystem_device: Device 0104
+        subsystem_vendor: Broadcom / LSI
+        vendor: Broadcom / LSI
+        children:
+        - device: Device 4a00
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a00
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a10
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a10
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a01
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a01
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '0'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+- ROOT_BUS: ROOT_BUS
+  bus_id: '80'
+  children:
+  - device: Turin GPP Bridge
+    device_class: PCI bridge
+    Express_Type: Root Port (Slot+)
+    LnkCap_Speed: 32GT/s
+    LnkCap_Width: x16
+    LnkSta_Speed: 32GT/s
+    LnkSta_Width: x16
+    numanode: '1'
+    subsystem_device: Device 1453
+    subsystem_vendor: Advanced Micro Devices, Inc. [AMD]
+    vendor: Advanced Micro Devices, Inc. [AMD]
+    children:
+    - device: Device c040
+      device_class: PCI bridge
+      Express_Type: Upstream Port
+      LnkCap_Speed: 64GT/s
+      LnkCap_Width: x16
+      LnkSta_Speed: 32GT/s
+      LnkSta_Speed_Qualifier: (downgraded)
+      LnkSta_Width: x16
+      numanode: '1'
+      subsystem_device: Device 0104
+      subsystem_vendor: Broadcom / LSI
+      vendor: Broadcom / LSI
+      children:
+      - device: Device c040
+        device_class: PCI bridge
+        Express_Type: Downstream Port (Slot+)
+        LnkCap_Speed: 64GT/s
+        LnkCap_Width: x16
+        LnkSta_Speed: 32GT/s
+        LnkSta_Width: x16
+        numanode: '1'
+        subsystem_device: Device 0104
+        subsystem_vendor: Broadcom / LSI
+        vendor: Broadcom / LSI
+        children:
+        - device: Device 4a00
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a00
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a10
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a10
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a01
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a01
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+- ROOT_BUS: ROOT_BUS
+  bus_id: '90'
+  children:
+  - device: Turin GPP Bridge
+    device_class: PCI bridge
+    Express_Type: Root Port (Slot+)
+    LnkCap_Speed: 32GT/s
+    LnkCap_Width: x16
+    LnkSta_Speed: 32GT/s
+    LnkSta_Width: x16
+    numanode: '1'
+    subsystem_device: Device 1453
+    subsystem_vendor: Advanced Micro Devices, Inc. [AMD]
+    vendor: Advanced Micro Devices, Inc. [AMD]
+    children:
+    - device: Device c040
+      device_class: PCI bridge
+      Express_Type: Upstream Port
+      LnkCap_Speed: 64GT/s
+      LnkCap_Width: x16
+      LnkSta_Speed: 32GT/s
+      LnkSta_Speed_Qualifier: (downgraded)
+      LnkSta_Width: x16
+      numanode: '1'
+      subsystem_device: Device 0104
+      subsystem_vendor: Broadcom / LSI
+      vendor: Broadcom / LSI
+      children:
+      - device: Device c040
+        device_class: PCI bridge
+        Express_Type: Downstream Port (Slot+)
+        LnkCap_Speed: 64GT/s
+        LnkCap_Width: x16
+        LnkSta_Speed: 32GT/s
+        LnkSta_Width: x16
+        numanode: '1'
+        subsystem_device: Device 0104
+        subsystem_vendor: Broadcom / LSI
+        vendor: Broadcom / LSI
+        children:
+        - device: Device 4a00
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a00
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a10
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a10
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a01
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a01
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+- ROOT_BUS: ROOT_BUS
+  bus_id: a0
+- ROOT_BUS: ROOT_BUS
+  bus_id: b0
+- ROOT_BUS: ROOT_BUS
+  bus_id: c0
+- ROOT_BUS: ROOT_BUS
+  bus_id: d0
+- ROOT_BUS: ROOT_BUS
+  bus_id: e0
+  children:
+  - device: Turin GPP Bridge
+    device_class: PCI bridge
+    Express_Type: Root Port (Slot+)
+    LnkCap_Speed: 32GT/s
+    LnkCap_Width: x16
+    LnkSta_Speed: 32GT/s
+    LnkSta_Width: x16
+    numanode: '1'
+    subsystem_device: Device 1453
+    subsystem_vendor: Advanced Micro Devices, Inc. [AMD]
+    vendor: Advanced Micro Devices, Inc. [AMD]
+    children:
+    - device: Device c040
+      device_class: PCI bridge
+      Express_Type: Upstream Port
+      LnkCap_Speed: 64GT/s
+      LnkCap_Width: x16
+      LnkSta_Speed: 32GT/s
+      LnkSta_Speed_Qualifier: (downgraded)
+      LnkSta_Width: x16
+      numanode: '1'
+      subsystem_device: Device 0104
+      subsystem_vendor: Broadcom / LSI
+      vendor: Broadcom / LSI
+      children:
+      - device: Device c040
+        device_class: PCI bridge
+        Express_Type: Downstream Port (Slot+)
+        LnkCap_Speed: 64GT/s
+        LnkCap_Width: x16
+        LnkSta_Speed: 32GT/s
+        LnkSta_Width: x16
+        numanode: '1'
+        subsystem_device: Device 0104
+        subsystem_vendor: Broadcom / LSI
+        vendor: Broadcom / LSI
+        children:
+        - device: Device 4a00
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a00
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a10
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a10
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a01
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a01
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+- ROOT_BUS: ROOT_BUS
+  bus_id: f0
+  children:
+  - device: Turin GPP Bridge
+    device_class: PCI bridge
+    Express_Type: Root Port (Slot+)
+    LnkCap_Speed: 32GT/s
+    LnkCap_Width: x16
+    LnkSta_Speed: 32GT/s
+    LnkSta_Width: x16
+    numanode: '1'
+    subsystem_device: Device 1453
+    subsystem_vendor: Advanced Micro Devices, Inc. [AMD]
+    vendor: Advanced Micro Devices, Inc. [AMD]
+    children:
+    - device: Device c040
+      device_class: PCI bridge
+      Express_Type: Upstream Port
+      LnkCap_Speed: 64GT/s
+      LnkCap_Width: x16
+      LnkSta_Speed: 32GT/s
+      LnkSta_Speed_Qualifier: (downgraded)
+      LnkSta_Width: x16
+      numanode: '1'
+      subsystem_device: Device 0104
+      subsystem_vendor: Broadcom / LSI
+      vendor: Broadcom / LSI
+      children:
+      - device: Device c040
+        device_class: PCI bridge
+        Express_Type: Downstream Port (Slot+)
+        LnkCap_Speed: 64GT/s
+        LnkCap_Width: x16
+        LnkSta_Speed: 32GT/s
+        LnkSta_Width: x16
+        numanode: '1'
+        subsystem_device: Device 0104
+        subsystem_vendor: Broadcom / LSI
+        vendor: Broadcom / LSI
+        children:
+        - device: Device 4a00
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a00
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a10
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          LnkSta_Speed: 32GT/s
+          LnkSta_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a10
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a01
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a01
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
+        - device: Device 4a11
+          device_class: Processing accelerators
+          Express_Type: Endpoint
+          LnkCap_Speed: 32GT/s
+          LnkCap_Width: x16
+          numanode: '1'
+          subsystem_device: Device 4a11
+          subsystem_vendor: OpenAI
+          vendor: OpenAI
