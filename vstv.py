@@ -41,11 +41,14 @@ STV_COMMANDS = {
 
 # --- PARALLEL SMOKE TEST SETTINGS ---
 SMOKE_TEST_CHIPS = list(range(8))
-SMOKE_TEST_PARALLELISM = 8
+SMOKE_TEST_PARALLELISM = 4              # 4-way avoids the DMA/IOMMU contention hangs we saw at 8-way
 SMOKE_TEST_SSH_TIMEOUT_S = 30
-SMOKE_TEST_CHIP_TIMEOUT_S = 30 * 60
+SMOKE_TEST_CHIP_TIMEOUT_S = 10 * 60     # paramiko-side ceiling per chip
+SMOKE_TEST_REMOTE_TIMEOUT_S = 600       # Katsu-side `timeout(1)` wrapper deadline (seconds)
+SMOKE_TEST_HEARTBEAT_S = 60             # emit a "still waiting on chips ..." line every N seconds
 
 SMOKE_NEXUS_CMD_TEMPLATE = (
+    f'timeout --kill-after=15s {SMOKE_TEST_REMOTE_TIMEOUT_S}s '
     'smoke_nexus --nocapture --test "" --skip :compute_die: '
     '--test-threads=1 -- --silicon-mode '
     '--device-instance chip_id:{chip_id}'
@@ -68,6 +71,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("PCIe-STV-Suite")
+
+# Silence paramiko's chatty INFO-level transport messages
+logging.getLogger("paramiko").setLevel(logging.WARNING)
 
 def log_test_case_start(test_case_name: str) -> None:
     logger.info(f"\n{'='*70}")
@@ -115,10 +121,10 @@ def update_chip_list(chip_ids: List[int]) -> bool:
 def _read_smoke_expected_counts():
     """
     Extract expected_passed_count and expected_failed_count from the
-    smoke_test block of stv.yaml. Falls back to (21, 0) per the current
+    smoke_test block of stv.yaml. Falls back to (22, 0) per the current
     YAML contract if anything goes wrong.
     """
-    default_passed, default_failed = 21, 0
+    default_passed, default_failed = 22, 0
     try:
         with open(STV_YAML_PATH, "r") as f:
             content = f.read()
@@ -255,7 +261,7 @@ class ExecutionSummary:
         logger.info("="*75 + "\n")
 
 
-# --- PARALLEL SMOKE TEST (paramiko, one SSH per chip, buffered output) ---
+# --- PARALLEL SMOKE TEST (paramiko, capped parallelism, buffered output, heartbeat) ---
 def _run_smoke_one_chip(
     chip_id: int,
     katsu_ip: str,
@@ -265,7 +271,7 @@ def _run_smoke_one_chip(
     """
     SSH into the Katsu CPU and run smoke_nexus for one chip. Buffer all stdout/stderr
     in memory and return it; the caller is responsible for emitting the captured
-    output to the main log in chip-id order after every chip has finished.
+    output to the main log in the as-completed order.
     """
     cmd = SMOKE_NEXUS_CMD_TEMPLATE.format(chip_id=chip_id)
     logger.info(f"[smoke chip {chip_id}] start")
@@ -390,22 +396,40 @@ def execute_smoke_test_parallel(katsu_ip: str, summary: ExecutionSummary) -> Non
             for chip_id in SMOKE_TEST_CHIPS
         }
 
-        for fut in concurrent.futures.as_completed(futures):
-            chip_id, _passed, detail = fut.result()
-            per_chip[chip_id] = detail
+        not_done = set(futures.keys())
 
-            icon = "PASS" if detail["passed"] else "FAIL"
-            block = (
-                f"\n{'=' * 70}\n"
-                f"CHIP {chip_id}  |  {icon}  |  rc={detail['exit_status']}  |  "
-                f"{detail['actual_passed']}P/{detail['actual_failed']}F "
-                f"(expected {expected_passed}P/{expected_failed}F)  |  "
-                f"elapsed={detail['elapsed_s']:.1f}s\n"
-                f"{'=' * 70}\n"
-                f"{detail['output'].rstrip()}\n"
-                f"{'-' * 70}"
+        while not_done:
+            done, not_done = concurrent.futures.wait(
+                not_done,
+                timeout=SMOKE_TEST_HEARTBEAT_S,
+                return_when=concurrent.futures.FIRST_COMPLETED,
             )
-            logger.info(block)
+
+            if not done:
+                remaining_chips = sorted(futures[f] for f in not_done)
+                elapsed = time.monotonic() - overall_start
+                logger.info(
+                    f"[smoke heartbeat] still waiting on chips {remaining_chips} "
+                    f"after {elapsed:.0f}s"
+                )
+                continue
+
+            for fut in done:
+                chip_id, _passed, detail = fut.result()
+                per_chip[chip_id] = detail
+
+                icon = "PASS" if detail["passed"] else "FAIL"
+                block = (
+                    f"\n{'=' * 70}\n"
+                    f"CHIP {chip_id}  |  {icon}  |  rc={detail['exit_status']}  |  "
+                    f"{detail['actual_passed']}P/{detail['actual_failed']}F "
+                    f"(expected {expected_passed}P/{expected_failed}F)  |  "
+                    f"elapsed={detail['elapsed_s']:.1f}s\n"
+                    f"{'=' * 70}\n"
+                    f"{detail['output'].rstrip()}\n"
+                    f"{'-' * 70}"
+                )
+                logger.info(block)
 
     overall_elapsed = time.monotonic() - overall_start
 
@@ -426,6 +450,34 @@ def execute_smoke_test_parallel(katsu_ip: str, summary: ExecutionSummary) -> Non
         f"in {overall_elapsed:.1f}s (aggregate={'PASS' if aggregate_passed else 'FAIL'})"
     )
     logger.info("#" * 70 + "\n")
+
+
+def _cleanup_remote_smoke_nexus(katsu_ip: str) -> None:
+    """
+    Best-effort: kill any leftover smoke_nexus processes on Katsu. Catches the
+    case where the wrapper was Ctrl-C'd mid-run and SSH-launched processes were
+    left orphaned. Safe to call when nothing is running (pkill returns 1, ignored).
+    """
+    try:
+        cleanup_client = paramiko.SSHClient()
+        cleanup_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        cleanup_client.connect(
+            hostname=katsu_ip,
+            username=KATSU_CPU_USERNAME,
+            password=KATSU_CPU_PASSWORD,
+            timeout=10,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        cleanup_client.exec_command(
+            "pkill -TERM smoke_nexus 2>/dev/null; sleep 2; "
+            "pkill -KILL smoke_nexus 2>/dev/null; true",
+            timeout=15,
+        )
+        cleanup_client.close()
+        logger.info("Best-effort smoke_nexus cleanup sent to Katsu.")
+    except Exception as e:
+        logger.warning(f"Smoke cleanup pass failed (harmless): {e}")
 
 
 # --- RNI LINK CHECK PER CHIP 0..7 ---
@@ -526,6 +578,8 @@ def main():
         logger.error(f"Critical suite failure: {e}", exc_info=True)
         sys.exit(1)
     finally:
+        _cleanup_remote_smoke_nexus(cpu_ip)
+
         if not update_chip_list(list(range(8))):
             logger.error("Failed to restore chip_list to default [0..7].")
         else:
