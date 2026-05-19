@@ -8,19 +8,24 @@ import subprocess
 import logging
 import concurrent.futures
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List
+
 import paramiko
+
 # --- DYNAMIC SCRIPT DIRECTORY ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 WORKSPACE_DIR = "/home/hpsroot/Arvind-SIT/vindaloo_stv/packages-katsu"
 UNIDIAG_BIN = "/home/hpsroot/venv-katsu/bin/unidiag"
 CONFIG_PATH = os.path.join(WORKSPACE_DIR, "config.yaml")
+
 # Path to the STV YAML used by unidiag
 STV_YAML_PATH = "/home/hpsroot/venv-katsu/lib/python3.12/site-packages/unidiag/config/katsu/stv.yaml"
+
 # --- KATSU CPU LOGIN SETTINGS ---
 KATSU_CPU_USERNAME = "root"
 KATSU_CPU_PASSWORD = "admin@123"
+
 # --- UNIDIAG STV COMMANDS ---
 STV_COMMANDS = {
     "smoke_test": f"{UNIDIAG_BIN} -c {CONFIG_PATH} test_compute stv_test smoke_test",
@@ -33,24 +38,29 @@ STV_COMMANDS = {
     "pcie_aer": f"{UNIDIAG_BIN} -c {CONFIG_PATH} test_compute stv_test pcie_aer",
     "rni_link_check": f"{UNIDIAG_BIN} -c {CONFIG_PATH} test_compute stv_test rni_link_check",
 }
+
 # --- PARALLEL SMOKE TEST SETTINGS ---
 SMOKE_TEST_CHIPS = list(range(8))
 SMOKE_TEST_PARALLELISM = 8
 SMOKE_TEST_SSH_TIMEOUT_S = 30
 SMOKE_TEST_CHIP_TIMEOUT_S = 30 * 60
+
 SMOKE_NEXUS_CMD_TEMPLATE = (
     'smoke_nexus --nocapture --test "" --skip :compute_die: '
     '--test-threads=1 -- --silicon-mode '
     '--device-instance chip_id:{chip_id}'
 )
+
 SMOKE_RESULT_RE = re.compile(
     r"test result:\s+(?P<status>ok|FAILED)\.\s+"
     r"(?P<passed>\d+)\s+passed;\s+"
     r"(?P<failed>\d+)\s+failed"
 )
+
 # --- LOGGING SETUP ---
 log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 date_format = "%H:%M:%S"
+
 logging.basicConfig(
     level=logging.INFO,
     format=log_format,
@@ -58,21 +68,26 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("PCIe-STV-Suite")
+
 def log_test_case_start(test_case_name: str) -> None:
     logger.info(f"\n{'='*70}")
     logger.info(f"🚀 TEST CASE BEGIN: {test_case_name.upper()}")
     logger.info(f"{'='*70}")
+
 # --- YAML CHIP LIST UPDATER ---
 def update_chip_list(chip_ids: List[int]) -> bool:
     if not os.path.exists(STV_YAML_PATH):
         logger.error(f"stv.yaml not found at: {STV_YAML_PATH}")
         return False
+
     try:
         with open(STV_YAML_PATH, "r") as f:
             lines = f.readlines()
+
         chips_str = ", ".join(str(c) for c in chip_ids)
         replaced = False
         new_lines = []
+
         for line in lines:
             stripped = line.lstrip()
             if stripped.startswith("chip_list:"):
@@ -83,31 +98,39 @@ def update_chip_list(chip_ids: List[int]) -> bool:
                 logger.info(f"Updated chip_list in stv.yaml -> [{chips_str}]")
             else:
                 new_lines.append(line)
+
         if not replaced:
             logger.error("chip_list field not found in stv.yaml; no changes made.")
             return False
+
         with open(STV_YAML_PATH, "w") as f:
             f.writelines(new_lines)
+
         return True
     except Exception as e:
         logger.error(f"Failed to update chip_list in stv.yaml: {e}")
         return False
+
+
 def _read_smoke_expected_counts():
     """
     Extract expected_passed_count and expected_failed_count from the
     smoke_test block of stv.yaml. Falls back to (21, 0) per the current
-    YAML file if anything goes wrong.
+    YAML contract if anything goes wrong.
     """
     default_passed, default_failed = 21, 0
     try:
         with open(STV_YAML_PATH, "r") as f:
             content = f.read()
+
         m = re.search(r"^smoke_test:\s*\n((?:[ \t]+.*\n)+)", content, re.MULTILINE)
         if not m:
             return default_passed, default_failed
+
         block = m.group(1)
         passed_m = re.search(r"expected_passed_count:\s*(\d+)", block)
         failed_m = re.search(r"expected_failed_count:\s*(\d+)", block)
+
         return (
             int(passed_m.group(1)) if passed_m else default_passed,
             int(failed_m.group(1)) if failed_m else default_failed,
@@ -118,31 +141,41 @@ def _read_smoke_expected_counts():
             f"using defaults ({default_passed} passed / {default_failed} failed)."
         )
         return default_passed, default_failed
+
+
 # --- LOCAL ORCHESTRATOR ---
 class LocalUnidiagRunner:
     """Executes unidiag commands directly from the local host server."""
+
     def update_config_ip(self, cpu_ip: str) -> bool:
         """Updates only the CPU_ssh IP, username, and password in local config.yaml."""
         yaml_path = CONFIG_PATH
+
         if not os.path.exists(yaml_path):
             logger.error(f"Config file not found at: {yaml_path}")
             return False
+
         logger.info(f"Synchronizing local config.yaml -> CPU_ssh Katsu CPU: {cpu_ip}...")
         logger.info('Updating CPU_ssh credentials -> Username: "root", Password: "admin@123"')
+
         try:
             with open(yaml_path, 'r') as f:
                 lines = f.readlines()
+
             new_lines = []
             inside_cpu_ssh = False
             cpu_ssh_indent = None
+
             for line in lines:
                 stripped = line.lstrip()
                 current_indent = len(line) - len(stripped)
+
                 if stripped.startswith("CPU_ssh:"):
                     inside_cpu_ssh = True
                     cpu_ssh_indent = current_indent
                     new_lines.append(line)
                     continue
+
                 if inside_cpu_ssh:
                     if (
                         stripped
@@ -152,29 +185,39 @@ class LocalUnidiagRunner:
                     ):
                         inside_cpu_ssh = False
                         cpu_ssh_indent = None
+
                 if inside_cpu_ssh:
                     key = stripped.split(":", 1)[0].strip()
                     indent = line[:current_indent]
+
                     if key == "Ip_address":
                         new_lines.append(f'{indent}Ip_address: "{cpu_ip}"\n')
                         continue
+
                     if key == "Username":
                         new_lines.append(f'{indent}Username: "{KATSU_CPU_USERNAME}"\n')
                         continue
+
                     if key == "Password":
                         new_lines.append(f'{indent}Password: "{KATSU_CPU_PASSWORD}"\n')
                         continue
+
                 new_lines.append(line)
+
             with open(yaml_path, 'w') as f:
                 f.writelines(new_lines)
+
             logger.info("✅ Local config.yaml CPU_ssh successfully synchronized.")
             return True
+
         except Exception as e:
             logger.error(f"Failed to update config.yaml CPU_ssh section: {e}")
             return False
+
     def run_command(self, cmd: str) -> str:
         katsu_lib_path = os.path.join(WORKSPACE_DIR, "pylib")
         full_cmd = f"export PYTHONPATH=$PYTHONPATH:{katsu_lib_path} && {cmd}"
+
         logger.info(f"> [LOCAL CMD]: {full_cmd}")
         try:
             result = subprocess.run(
@@ -190,42 +233,50 @@ class LocalUnidiagRunner:
         except Exception as e:
             logger.error(f"Failed to run subprocess for STV command: {e}")
             return f"ERROR: {e}"
+
 # --- EXECUTION SUMMARY ---
 class ExecutionSummary:
     def __init__(self) -> None:
         self.test_results: Dict[str, bool] = {}
+
     def record_test(self, test_name: str, passed: bool) -> None:
         self.test_results[test_name] = passed
+
     def print_summary(self) -> None:
         logger.info("\n" + "="*75)
         logger.info(f"{'🚀 FINAL EXECUTION SUMMARY':^75}")
         logger.info("="*75)
+
         if not self.test_results:
             logger.info("  No tests executed.")
         for test, passed in self.test_results.items():
             icon = "✅ PASS" if passed else "❌ FAIL"
             logger.info(f"  {icon:<7} | {test}")
         logger.info("="*75 + "\n")
-# --- PARALLEL SMOKE TEST (paramiko, one SSH per chip) ---
+
+
+# --- PARALLEL SMOKE TEST (paramiko, one SSH per chip, buffered output) ---
 def _run_smoke_one_chip(
     chip_id: int,
     katsu_ip: str,
-    log_dir: Path,
     expected_passed: int,
     expected_failed: int,
 ):
     """
-    SSH into the Katsu CPU and run smoke_nexus for one chip. Stream stdout/stderr
-    into a per-chip log file, then decide pass/fail strictly against the YAML file.
+    SSH into the Katsu CPU and run smoke_nexus for one chip. Buffer all stdout/stderr
+    in memory and return it; the caller is responsible for emitting the captured
+    output to the main log in chip-id order after every chip has finished.
     """
     cmd = SMOKE_NEXUS_CMD_TEMPLATE.format(chip_id=chip_id)
-    log_path = log_dir / f"smoke_chip_{chip_id}.log"
-    logger.info(f"[smoke chip {chip_id}] start -> {log_path.name}")
+    logger.info(f"[smoke chip {chip_id}] start")
+
     start = time.monotonic()
     exit_status = -1
     output_buf: List[str] = []
+
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
     try:
         client.connect(
             hostname=katsu_ip,
@@ -235,36 +286,36 @@ def _run_smoke_one_chip(
             look_for_keys=False,
             allow_agent=False,
         )
+
         transport = client.get_transport()
         if transport is not None:
             transport.set_keepalive(30)
+
         stdin, stdout, stderr = client.exec_command(
             cmd,
             timeout=SMOKE_TEST_CHIP_TIMEOUT_S,
             get_pty=False,
         )
         stdout.channel.set_combine_stderr(True)
-        with open(log_path, "w") as log_file:
-            for line in iter(stdout.readline, ""):
-                log_file.write(line)
-                log_file.flush()
-                output_buf.append(line)
+
+        for line in iter(stdout.readline, ""):
+            output_buf.append(line)
+
         exit_status = stdout.channel.recv_exit_status()
+
     except Exception as e:
         logger.error(f"[smoke chip {chip_id}] SSH/exec failure: {e}")
-        try:
-            with open(log_path, "a") as log_file:
-                log_file.write(f"\n[wrapper-error] {e}\n")
-        except Exception:
-            pass
+        output_buf.append(f"\n[wrapper-error] {e}\n")
     finally:
         try:
             client.close()
         except Exception:
             pass
+
     elapsed = time.monotonic() - start
     full_output = "".join(output_buf)
     summary_match = SMOKE_RESULT_RE.search(full_output)
+
     if summary_match:
         status_str = summary_match.group("status")
         actual_passed = int(summary_match.group("passed"))
@@ -281,40 +332,45 @@ def _run_smoke_one_chip(
         actual_failed = -1
         contract_ok = False
         summary_seen = False
+
     passed = (exit_status == 0) and contract_ok
+
     detail = {
         "chip_id": chip_id,
+        "passed": passed,
         "exit_status": exit_status,
         "summary_seen": summary_seen,
         "status_str": status_str,
         "actual_passed": actual_passed,
         "actual_failed": actual_failed,
         "elapsed_s": elapsed,
-        "log_path": str(log_path),
+        "output": full_output,
     }
+
     icon = "PASS" if passed else "FAIL"
     logger.info(
-        f"[smoke chip {chip_id}] {icon} "
+        f"[smoke chip {chip_id}] finished {icon} "
         f"rc={exit_status} summary={status_str} "
         f"{actual_passed}P/{actual_failed}F "
-        f"(expected {expected_passed}P/{expected_failed}F) "
-        f"elapsed={elapsed:.1f}s log={log_path.name}"
+        f"elapsed={elapsed:.1f}s"
     )
+
     return chip_id, passed, detail
-def execute_smoke_test_parallel(
-    katsu_ip: str,
-    summary: ExecutionSummary,
-    log_dir: Path,
-) -> None:
+
+
+def execute_smoke_test_parallel(katsu_ip: str, summary: ExecutionSummary) -> None:
     expected_passed, expected_failed = _read_smoke_expected_counts()
+
     label = (
         f"STV Smoke Test (parallel via paramiko, {SMOKE_TEST_PARALLELISM} workers, "
         f"{len(SMOKE_TEST_CHIPS)} chips, expecting "
         f"{expected_passed} passed / {expected_failed} failed per chip)"
     )
     log_test_case_start(label)
+
     overall_start = time.monotonic()
     per_chip: Dict[int, dict] = {}
+
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=SMOKE_TEST_PARALLELISM,
         thread_name_prefix="smoke",
@@ -324,62 +380,78 @@ def execute_smoke_test_parallel(
                 _run_smoke_one_chip,
                 chip_id,
                 katsu_ip,
-                log_dir,
                 expected_passed,
                 expected_failed,
             ): chip_id
             for chip_id in SMOKE_TEST_CHIPS
         }
+
         for fut in concurrent.futures.as_completed(futures):
-            chip_id, passed, detail = fut.result()
+            chip_id, _passed, detail = fut.result()
             per_chip[chip_id] = detail
-            summary.record_test(f"STV Smoke Test - Chip {chip_id}", passed)
+
     overall_elapsed = time.monotonic() - overall_start
-    passing_chips = sum(
-        1
-        for d in per_chip.values()
-        if d["exit_status"] == 0
-        and d["summary_seen"]
-        and d["status_str"] == "ok"
-        and d["actual_passed"] == expected_passed
-        and d["actual_failed"] == expected_failed
-    )
+
+    logger.info("\n" + "#" * 70)
+    logger.info("SMOKE TEST OUTPUT (per chip, in chip_id order)")
+    logger.info("#" * 70)
+
+    for chip_id in sorted(per_chip.keys()):
+        d = per_chip[chip_id]
+        icon = "PASS" if d["passed"] else "FAIL"
+        block = (
+            f"\n{'=' * 70}\n"
+            f"CHIP {chip_id}  |  {icon}  |  rc={d['exit_status']}  |  "
+            f"{d['actual_passed']}P/{d['actual_failed']}F "
+            f"(expected {expected_passed}P/{expected_failed}F)  |  "
+            f"elapsed={d['elapsed_s']:.1f}s\n"
+            f"{'=' * 70}\n"
+            f"{d['output'].rstrip()}\n"
+            f"{'-' * 70}"
+        )
+        logger.info(block)
+        summary.record_test(f"STV Smoke Test - Chip {chip_id}", d["passed"])
+
+    passing_chips = sum(1 for d in per_chip.values() if d["passed"])
     total_chips = len(SMOKE_TEST_CHIPS)
     aggregate_passed = passing_chips == total_chips
+
     summary.record_test("STV Smoke Test (aggregate)", aggregate_passed)
+
+    logger.info("\n" + "#" * 70)
     logger.info(
         f"Smoke parallel batch complete: {passing_chips}/{total_chips} chips passed "
         f"in {overall_elapsed:.1f}s (aggregate={'PASS' if aggregate_passed else 'FAIL'})"
     )
-    if not aggregate_passed:
-        for chip_id, d in sorted(per_chip.items()):
-            logger.error(
-                f"  chip {chip_id}: rc={d['exit_status']} "
-                f"status={d['status_str']} {d['actual_passed']}P/{d['actual_failed']}F "
-                f"summary_seen={d['summary_seen']} log={d['log_path']}"
-            )
+    logger.info("#" * 70 + "\n")
+
+
 # --- RNI LINK CHECK PER CHIP 0..7 ---
 def execute_rni_link_checks_per_chip(runner: LocalUnidiagRunner, summary: ExecutionSummary):
     cmd = STV_COMMANDS["rni_link_check"]
+
     for chip_id in range(8):
         if not update_chip_list([chip_id]):
             logger.error(f"Skipping RNI Link Check for chip {chip_id}: failed to update chip_list.")
             summary.record_test(f"RNI Link Check - Chip {chip_id}", False)
             continue
+
         test_name = f"RNI Link Check - Chip {chip_id}"
         log_test_case_start(test_name)
         out = runner.run_command(cmd)
         logger.info(f"--- Console Output ---\n{out}\n{'-'*40}")
+
         passed = "[PASS]" in out and "[FAIL]" not in out
         summary.record_test(test_name, passed)
+
         if not passed:
             logger.error(f"{test_name} reported a failure or error.")
+
 # --- MAIN RUNNER ---
 def execute_stv_tests(
     runner: LocalUnidiagRunner,
     summary: ExecutionSummary,
     katsu_ip: str,
-    log_dir: Path,
 ) -> None:
     test_mapping = {
         "STV Device Info Check": STV_COMMANDS["device_info_check"],
@@ -392,45 +464,60 @@ def execute_stv_tests(
         "RNI Link Check":        STV_COMMANDS["rni_link_check"],
         "PCIe AER Check":        STV_COMMANDS["pcie_aer"]
     }
+
     for test_name, command in test_mapping.items():
         if test_name == "RNI Link Check":
             execute_rni_link_checks_per_chip(runner, summary)
             continue
+
         if test_name == "STV Smoke Test":
-            execute_smoke_test_parallel(katsu_ip, summary, log_dir)
+            execute_smoke_test_parallel(katsu_ip, summary)
             continue
+
         log_test_case_start(test_name)
         out = runner.run_command(command)
         logger.info(f"--- Console Output ---\n{out}\n{'-'*40}")
+
         passed = "[PASS]" in out and "[FAIL]" not in out
         summary.record_test(test_name, passed)
+
         if not passed:
             logger.error(f"{test_name} reported a failure or error.")
+
 def main():
     parser = argparse.ArgumentParser(description="Host Server -> Katsu PCIe/STV Validation Suite")
     parser.add_argument("--katsu-cpu-ip", required=True, help="IP Address of the target Katsu CPU")
     parser.add_argument("--results-dir", default=os.path.join(SCRIPT_DIR, "results_pcie"), help="Base directory to store results")
     args = parser.parse_args()
+
     cpu_ip = args.katsu_cpu_ip
     base_results_dir = os.path.abspath(args.results_dir)
     os.makedirs(base_results_dir, exist_ok=True)
+
     summary = ExecutionSummary()
     runner = LocalUnidiagRunner()
+
     try:
         run_timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
         safe_ip_string = cpu_ip.replace('.', '_')
         run_dir_name = f"katsu_cpu_{safe_ip_string}_{run_timestamp}"
+
         dynamic_results_dir = os.path.join(base_results_dir, run_dir_name)
         os.makedirs(dynamic_results_dir, exist_ok=True)
+
         log_file_path = os.path.join(dynamic_results_dir, "pcie_stv_run.log")
         file_handler = logging.FileHandler(log_file_path)
         file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
         logger.addHandler(file_handler)
+
         logger.info(f"Logging initialized. Output directory: {dynamic_results_dir}")
+
         if not runner.update_config_ip(cpu_ip):
             logger.error("Aborting suite: Could not update config.yaml.")
             sys.exit(1)
-        execute_stv_tests(runner, summary, cpu_ip, Path(dynamic_results_dir))
+
+        execute_stv_tests(runner, summary, cpu_ip)
+
     except KeyboardInterrupt:
         logger.warning("Execution interrupted by user.")
     except Exception as e:
@@ -441,7 +528,9 @@ def main():
             logger.error("Failed to restore chip_list to default [0..7].")
         else:
             logger.info("Restored chip_list in stv.yaml to default [0, 1, 2, 3, 4, 5, 6, 7].")
+
         summary.print_summary()
         logger.info("Suite Execution Complete.")
+
 if __name__ == "__main__":
     main()
