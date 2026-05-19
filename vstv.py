@@ -371,6 +371,10 @@ def execute_smoke_test_parallel(katsu_ip: str, summary: ExecutionSummary) -> Non
     overall_start = time.monotonic()
     per_chip: Dict[int, dict] = {}
 
+    logger.info("\n" + "#" * 70)
+    logger.info("SMOKE TEST OUTPUT (each chip's block is dumped the instant that chip finishes)")
+    logger.info("#" * 70)
+
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=SMOKE_TEST_PARALLELISM,
         thread_name_prefix="smoke",
@@ -390,32 +394,30 @@ def execute_smoke_test_parallel(katsu_ip: str, summary: ExecutionSummary) -> Non
             chip_id, _passed, detail = fut.result()
             per_chip[chip_id] = detail
 
+            icon = "PASS" if detail["passed"] else "FAIL"
+            block = (
+                f"\n{'=' * 70}\n"
+                f"CHIP {chip_id}  |  {icon}  |  rc={detail['exit_status']}  |  "
+                f"{detail['actual_passed']}P/{detail['actual_failed']}F "
+                f"(expected {expected_passed}P/{expected_failed}F)  |  "
+                f"elapsed={detail['elapsed_s']:.1f}s\n"
+                f"{'=' * 70}\n"
+                f"{detail['output'].rstrip()}\n"
+                f"{'-' * 70}"
+            )
+            logger.info(block)
+
     overall_elapsed = time.monotonic() - overall_start
 
-    logger.info("\n" + "#" * 70)
-    logger.info("SMOKE TEST OUTPUT (per chip, in chip_id order)")
-    logger.info("#" * 70)
-
     for chip_id in sorted(per_chip.keys()):
-        d = per_chip[chip_id]
-        icon = "PASS" if d["passed"] else "FAIL"
-        block = (
-            f"\n{'=' * 70}\n"
-            f"CHIP {chip_id}  |  {icon}  |  rc={d['exit_status']}  |  "
-            f"{d['actual_passed']}P/{d['actual_failed']}F "
-            f"(expected {expected_passed}P/{expected_failed}F)  |  "
-            f"elapsed={d['elapsed_s']:.1f}s\n"
-            f"{'=' * 70}\n"
-            f"{d['output'].rstrip()}\n"
-            f"{'-' * 70}"
+        summary.record_test(
+            f"STV Smoke Test - Chip {chip_id}",
+            per_chip[chip_id]["passed"],
         )
-        logger.info(block)
-        summary.record_test(f"STV Smoke Test - Chip {chip_id}", d["passed"])
 
     passing_chips = sum(1 for d in per_chip.values() if d["passed"])
     total_chips = len(SMOKE_TEST_CHIPS)
     aggregate_passed = passing_chips == total_chips
-
     summary.record_test("STV Smoke Test (aggregate)", aggregate_passed)
 
     logger.info("\n" + "#" * 70)
