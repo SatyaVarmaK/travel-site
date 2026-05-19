@@ -1,0 +1,61 @@
+root@katsu:~# pgrep -a smoke_nexus; ss -tnp | grep :22[ 3034.807161] watchdog: BUG: soft lockup - CPU#33 stuck for 53s! [concurrent_oper:76215]
+
+76204 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:1
+76206 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:4
+76207 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:3
+76208 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:6
+76209 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:2
+76210 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:0
+76213 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:7
+76214 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:5
+ESTAB 0      0      [::ffff:10.196.197.88]:22   [::ffff:10.196.197.100]:36614 users:(("sshd",pid=75799,fd=4))
+ESTAB 0      0      [::ffff:10.196.197.88]:22   [::ffff:10.196.197.100]:36602 users:(("sshd",pid=75798,fd=4))
+ESTAB 0      0      [::ffff:10.196.197.88]:22   [::ffff:10.196.197.100]:36588 users:(("sshd",pid=75797,fd=4))
+ESTAB 0      0      [::ffff:10.196.197.88]:22   [::ffff:10.196.197.100]:36654 users:(("sshd",pid=75808,fd=4))
+ESTAB 0      0      [::ffff:10.196.197.88]:22   [::ffff:10.196.197.100]:36638 users:(("sshd",pid=75805,fd=4))
+ESTAB 0      0      [::ffff:10.196.197.88]:22   [::ffff:10.196.197.100]:36630 users:(("sshd",pid=75804,fd=4))
+ESTAB 0      0      [::ffff:10.196.197.88]:22   [::ffff:10.196.197.100]:36670 users:(("sshd",pid=75810,fd=4))
+ESTAB 0      0      [::ffff:10.196.197.88]:22   [::ffff:10.196.197.100]:36584 users:(("sshd",pid=75796,fd=4))
+root@katsu:~# [ 3058.341368] vfio-pci 0000:e4:01.0: timed out waiting for pending transaction; performing function level reset anyway
+[ 3062.800736] watchdog: BUG: soft lockup - CPU#33 stuck for 79s! [concurrent_oper:76215]
+[ 3090.867206] watchdog: BUG: soft lockup - CPU#33 stuck for 105s! [concurrent_oper:76215]
+[ 3118.860850] watchdog: BUG: soft lockup - CPU#33 stuck for 131s! [concurrent_oper:76215]
+[ 3143.856263] vfio-pci 0000:e4:01.0: timed out waiting for pending transaction; performing function level reset anyway
+[ 3146.854629] watchdog: BUG: soft lockup - CPU#33 stuck for 157s! [concurrent_oper:76215]
+[ 3174.848407] watchdog: BUG: soft lockup - CPU#33 stuck for 183s! [concurrent_oper:76215]
+[ 3202.842250] watchdog: BUG: soft lockup - CPU#33 stuck for 209s! [concurrent_oper:76215]
+[ 3229.668441] vfio-pci 0000:e4:01.0: timed out waiting for pending transaction; performing function level reset anyway
+[ 3230.836155] watchdog: BUG: soft lockup - CPU#33 stuck for 235s! [concurrent_oper:76215]
+[ 3258.829889] watchdog: BUG: soft lockup - CPU#33 stuck for 262s! [concurrent_oper:76215]
+[ 3286.823601] watchdog: BUG: soft lockup - CPU#33 stuck for 288s! [concurrent_oper:76215]
+
+root@katsu:~#
+root@katsu:~# pgrep -a smoke_nexus; ss -tnp | grep :22
+76207 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:3
+76208 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:6
+76213 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:7
+ESTAB    0      0      [::ffff:10.196.197.88]:22    [::ffff:10.196.197.100]:36614 users:(("sshd",pid=75799,fd=4))
+ESTAB    0      0      [::ffff:10.196.197.88]:22    [::ffff:10.196.197.100]:36654 users:(("sshd",pid=75808,fd=4))
+ESTAB    0      0      [::ffff:10.196.197.88]:22    [::ffff:10.196.197.100]:36670 users:(("sshd",pid=75810,fd=4))
+root@katsu:~# [ 3314.817424] watchdog: BUG: soft lockup - CPU#33 stuck for 314s! [concurrent_oper:76215]
+[ 3315.644438] vfio-pci 0000:e4:01.0: timed out waiting for pending transaction; performing function level reset anyway
+[ 3342.811051] watchdog: BUG: soft lockup - CPU#33 stuck for 340s! [concurrent_oper:76215]
+[ 3370.804759] watchdog: BUG: soft lockup - CPU#33 stuck for 366s! [concurrent_oper:76215]
+[ 3398.798443] watchdog: BUG: soft lockup - CPU#33 stuck for 392s! [concurrent_oper:76215]
+[ 3401.628440] vfio-pci 0000:e4:01.0: timed out waiting for pending transaction; performing function level reset anyway
+[ 3426.792121] watchdog: BUG: soft lockup - CPU#33 stuck for 418s! [concurrent_oper:76215]
+[ 3454.785886] watchdog: BUG: soft lockup - CPU#33 stuck for 444s! [concurrent_oper:76215]
+[ 3482.779712] watchdog: BUG: soft lockup - CPU#33 stuck for 470s! [concurrent_oper:76215]
+
+root@katsu:~#
+root@katsu:~#
+root@katsu:~# pgrep -a smoke_nexus; ss -tnp | grep :22
+76207 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:3
+76208 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:6
+76213 smoke_nexus --nocapture --test  --skip :compute_die: --test-threads=1 -- --silicon-mode --device-instance chip_id:7
+ESTAB    0      0      [::ffff:10.196.197.88]:22    [::ffff:10.196.197.100]:36614 users:(("sshd",pid=75799,fd=4))
+ESTAB    0      0      [::ffff:10.196.197.88]:22    [::ffff:10.196.197.100]:36654 users:(("sshd",pid=75808,fd=4))
+ESTAB    0      0      [::ffff:10.196.197.88]:22    [::ffff:10.196.197.100]:36670 users:(("sshd",pid=75810,fd=4))
+root@katsu:~# [ 3488.188436] vfio-pci 0000:e4:01.0: timed out waiting for pending transaction; performing function level reset anyway
+[ 3510.773575] watchdog: BUG: soft lockup - CPU#33 stuck for 496s! [concurrent_oper:76215]
+[ 3538.767431] watchdog: BUG: soft lockup - CPU#33 stuck for 522s! [concurrent_oper:76215]
