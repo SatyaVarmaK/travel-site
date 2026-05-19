@@ -69,13 +69,35 @@ _smoke_dump_lock = threading.Lock()
 log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 date_format = "%H:%M:%S"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format=log_format,
-    datefmt=date_format,
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+
+class SmartFormatter(logging.Formatter):
+    """
+    One formatter that switches between 'timestamped wrapper line' and 'raw test
+    output line' based on logger name. Records from the '.raw' child logger get
+    no prefix, so smoke_nexus output reads exactly like a native cargo test run.
+    """
+    def __init__(self) -> None:
+        super().__init__(log_format, datefmt=date_format)
+        self._bare = logging.Formatter("%(message)s")
+
+    def format(self, record: logging.LogRecord) -> str:
+        if record.name.endswith(".raw"):
+            return self._bare.format(record)
+        return super().format(record)
+
+
+_smart_formatter = SmartFormatter()
+
+_stdout_handler = logging.StreamHandler(sys.stdout)
+_stdout_handler.setFormatter(_smart_formatter)
+logging.basicConfig(level=logging.INFO, handlers=[_stdout_handler])
+
 logger = logging.getLogger("PCIe-STV-Suite")
+# Child logger for raw, unprefixed smoke_nexus output. Records propagate up
+# to PCIe-STV-Suite (and root), so any handler we attach to either will see
+# them - SmartFormatter chooses the bare format for these records.
+raw_logger = logging.getLogger("PCIe-STV-Suite.raw")
+raw_logger.setLevel(logging.INFO)
 
 # Silence paramiko's chatty INFO-level transport messages
 logging.getLogger("paramiko").setLevel(logging.WARNING)
@@ -269,7 +291,7 @@ class ExecutionSummary:
         logger.info("=" * 75)
 
 
-# --- PARALLEL SMOKE TEST (paramiko, capped parallelism, atomic per-line dump) ---
+# --- PARALLEL SMOKE TEST (paramiko, capped parallelism, raw atomic dump) ---
 def _run_smoke_one_chip(
     chip_id: int,
     katsu_ip: str,
@@ -380,7 +402,12 @@ def _run_smoke_one_chip(
 
 
 def _dump_chip_block(chip_id: int, detail: dict, expected_passed: int, expected_failed: int) -> None:
-    """Emit one chip's smoke output as a contiguous, prefixed block under the lock."""
+    """
+    Emit one chip's smoke output as a contiguous block under the lock:
+      - timestamped header on the wrapper logger
+      - raw, unprefixed smoke_nexus output (reads exactly like cargo test)
+      - timestamped footer on the wrapper logger
+    """
     icon = "PASS" if detail["passed"] else "FAIL"
     header = (
         f"===== CHIP {chip_id} {icon} | rc={detail['exit_status']} | "
@@ -388,12 +415,14 @@ def _dump_chip_block(chip_id: int, detail: dict, expected_passed: int, expected_
         f"(expected {expected_passed}P/{expected_failed}F) | "
         f"elapsed={detail['elapsed_s']:.1f}s ====="
     )
-    output_lines = detail["output"].splitlines()
+    raw_text = detail["output"].rstrip("\n")
 
     with _smoke_dump_lock:
         logger.info(header)
-        for line in output_lines:
-            logger.info(f"[chip {chip_id}] {line}")
+        # One raw_logger call per line keeps the per-line newline boundaries
+        # intact and ensures each handler emits one record per line.
+        for line in raw_text.splitlines():
+            raw_logger.info(line)
         logger.info(f"===== CHIP {chip_id} END =====")
 
 
@@ -412,7 +441,7 @@ def execute_smoke_test_parallel(katsu_ip: str, summary: ExecutionSummary) -> Non
     per_chip: Dict[int, dict] = {}
 
     logger.info("#" * 70)
-    logger.info("SMOKE TEST OUTPUT (each chip's lines are prefixed with [chip N])")
+    logger.info("SMOKE TEST OUTPUT (raw smoke_nexus output bracketed by CHIP N markers)")
     logger.info("#" * 70)
 
     with concurrent.futures.ThreadPoolExecutor(
@@ -585,7 +614,7 @@ def main():
 
         log_file_path = os.path.join(dynamic_results_dir, "pcie_stv_run.log")
         file_handler = logging.FileHandler(log_file_path)
-        file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+        file_handler.setFormatter(_smart_formatter)
         logger.addHandler(file_handler)
 
         logger.info(f"Logging initialized. Output directory: {dynamic_results_dir}")
