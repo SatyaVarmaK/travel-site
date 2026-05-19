@@ -1,0 +1,414 @@
+hpsroot@CTH-HPS-01:~/Arvind-SIT/vindaloo_stv$ python3 ./katsu_pcie_stv.py --katsu-cpu-ip 10.196.197.88
+01:55:40 [INFO] PCIe-STV-Suite: Logging initialized. Output directory: /home/hpsroot/Arvind-SIT/vindaloo_stv/results_pcie/katsu_cpu_10_196_197_88_20
+01:55:40 [INFO] PCIe-STV-Suite: Synchronizing local config.yaml -> CPU_ssh Katsu CPU: 10.196.197.88...
+01:55:40 [INFO] PCIe-STV-Suite: Updating CPU_ssh credentials -> Username: "root", Password: "admin@123"
+01:55:40 [INFO] PCIe-STV-Suite: ✅ Local config.yaml CPU_ssh successfully synchronized.
+01:55:40 [INFO] PCIe-STV-Suite:
+======================================================================
+01:55:40 [INFO] PCIe-STV-Suite: 🚀 TEST CASE BEGIN: STV DEVICE INFO CHECK
+01:55:40 [INFO] PCIe-STV-Suite: ======================================================================
+01:55:40 [INFO] PCIe-STV-Suite: > [LOCAL CMD]: export PYTHONPATH=$PYTHONPATH:/home/hpsroot/Arvind-SIT/vindaloo_stv/packages-katsu/pylib && /home/hpspsroot/Arvind-SIT/vindaloo_stv/packages-katsu/config.yaml test_compute stv_test device_info_check
+01:55:43 [INFO] PCIe-STV-Suite: --- Console Output ---
+--- Executing: STV Device Info Check ---
+Running STV device info check...
+module_name stv
+connection_type: CPU_ssh
+
+Executing: nexus_bootstrap device-info on 10.196.197.88
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| Device | Chip ID | BDF          | NUMA | PCIe Gen | PCIe Width | M7 FW | M7 State        | A53 FW       | A53 State | A53 Error Code | A53 Error |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| 0      | 0       | 0000:03:00.0 | 0    | Gen5     | x16        | 3.0.9 | MainPollingLoop | 2026.05.18.0 | Ready     | N/A            | N/A       |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| 1      | 1       | 0000:15:00.0 | 0    | Gen5     | x16        | 3.0.9 | MainPollingLoop | 2026.05.18.0 | Ready     | N/A            | N/A       |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| 2      | 3       | 0000:64:00.0 | 0    | Gen5     | x16        | 3.0.9 | MainPollingLoop | 2026.05.18.0 | Ready     | N/A            | N/A       |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| 3      | 2       | 0000:73:00.0 | 0    | Gen5     | x16        | 3.0.9 | MainPollingLoop | 2026.05.18.0 | Ready     | N/A            | N/A       |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| 4      | 4       | 0000:83:00.0 | 1    | Gen5     | x16        | 3.0.9 | MainPollingLoop | 2026.05.18.0 | Ready     | N/A            | N/A       |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| 5      | 5       | 0000:94:00.0 | 1    | Gen5     | x16        | 3.0.9 | MainPollingLoop | 2026.05.18.0 | Ready     | N/A            | N/A       |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| 6      | 7       | 0000:e4:00.0 | 1    | Gen5     | x16        | 3.0.9 | MainPollingLoop | 2026.05.18.0 | Ready     | N/A            | N/A       |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+| 7      | 6       | 0000:f3:00.0 | 1    | Gen5     | x16        | 3.0.9 | MainPollingLoop | 2026.05.18.0 | Ready     | N/A            | N/A       |
++--------+---------+--------------+------+----------+------------+-------+-----------------+--------------+-----------+----------------+-----------+
+Command executed via ssh connection with exit status 0
+
+
+--- Verifying device_0 (Chip ID: 0) ---
+PASS: All details for device_0 (Chip ID: 0) match the expected configuration.
+
+--- Verifying device_1 (Chip ID: 1) ---
+PASS: All details for device_1 (Chip ID: 1) match the expected configuration.
+
+--- Verifying device_2 (Chip ID: 2) ---
+PASS: All details for device_2 (Chip ID: 2) match the expected configuration.
+
+--- Verifying device_3 (Chip ID: 3) ---
+PASS: All details for device_3 (Chip ID: 3) match the expected configuration.
+
+--- Verifying device_4 (Chip ID: 4) ---
+PASS: All details for device_4 (Chip ID: 4) match the expected configuration.
+
+--- Verifying device_5 (Chip ID: 5) ---
+PASS: All details for device_5 (Chip ID: 5) match the expected configuration.
+
+--- Verifying device_6 (Chip ID: 6) ---
+PASS: All details for device_6 (Chip ID: 6) match the expected configuration.
+
+--- Verifying device_7 (Chip ID: 7) ---
+PASS: All details for device_7 (Chip ID: 7) match the expected configuration.
+  (y) STV Device Info Check : 0
+[total_funcs: 1 pass: 1 skip: 0 fail: 0 ] cost 1.57s - - [PASS]
+----------------------------------------
+01:55:43 [INFO] PCIe-STV-Suite:
+======================================================================
+01:55:43 [INFO] PCIe-STV-Suite: 🚀 TEST CASE BEGIN: STV SMOKE TEST (PARALLEL VIA PARAMIKO, 8 WORKERS, 8 CHIPS, EXPECTING 21 PASSED / 0 FAILED PER CH
+01:55:43 [INFO] PCIe-STV-Suite: ======================================================================
+01:55:43 [INFO] PCIe-STV-Suite:
+######################################################################
+01:55:43 [INFO] PCIe-STV-Suite: SMOKE TEST OUTPUT (each chip's block is dumped the instant that chip finishes)
+01:55:43 [INFO] PCIe-STV-Suite: ######################################################################
+01:55:43 [INFO] PCIe-STV-Suite: [smoke chip 0] start
+01:55:43 [INFO] PCIe-STV-Suite: [smoke chip 1] start
+01:55:43 [INFO] PCIe-STV-Suite: [smoke chip 2] start
+01:55:43 [INFO] PCIe-STV-Suite: [smoke chip 3] start
+01:55:43 [INFO] PCIe-STV-Suite: [smoke chip 4] start
+01:55:43 [INFO] PCIe-STV-Suite: [smoke chip 5] start
+01:55:43 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.6p1)
+01:55:43 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.6p1)
+01:55:43 [INFO] PCIe-STV-Suite: [smoke chip 6] start
+01:55:43 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.6p1)
+01:55:43 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.6p1)
+01:55:43 [INFO] PCIe-STV-Suite: [smoke chip 7] start
+01:55:43 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.6p1)
+01:55:43 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.6p1)
+01:55:43 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.6p1)
+01:55:43 [INFO] paramiko.transport: Connected (version 2.0, client OpenSSH_9.6p1)
+01:55:43 [INFO] paramiko.transport: Authentication (password) successful!
+01:55:43 [INFO] paramiko.transport: Authentication (password) successful!
+01:55:43 [INFO] paramiko.transport: Authentication (password) successful!
+01:55:43 [INFO] paramiko.transport: Authentication (password) successful!
+01:55:43 [INFO] paramiko.transport: Authentication (password) successful!
+01:55:43 [INFO] paramiko.transport: Authentication (password) successful!
+01:55:43 [INFO] paramiko.transport: Authentication (password) successful!
+01:55:43 [INFO] paramiko.transport: Authentication (password) successful!
+01:59:23 [INFO] PCIe-STV-Suite: [smoke chip 5] finished FAIL rc=0 summary=ok 22P/0F elapsed=219.7s
+01:59:23 [INFO] PCIe-STV-Suite:
+======================================================================
+CHIP 5  |  FAIL  |  rc=0  |  22P/0F (expected 21P/0F)  |  elapsed=219.7s
+======================================================================
+
+running 22 tests
+test concurrent_operations ... 2026-05-19T17:52:11.198002Z  WARN concurrent_operations 88: using default selection for backend 'vfio_alias'
+ok
+test test_all_stream_dma_throughput ... 2026-05-19T17:52:18.800907Z  WARN test_all_stream_dma_throughput 88: using default selection for backend 'vf
+ok
+test test_allocate ... 2026-05-19T17:53:58.270535Z  WARN                  test_allocate 88: using default selection for backend 'vfio_alias'
+ok
+test test_b2b_kernels ... 2026-05-19T17:54:00.470856Z  WARN               test_b2b_kernels 88: using default selection for backend 'vfio_alias'
+ok
+test test_bad_dma_address::not_modeled::test ... 2026-05-19T17:54:13.628079Z  WARN test_bad_dma_address::not_modeled::test 88: using default selecti
+2026-05-19T17:54:14.623618Z ERROR ThreadId(3578) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x3b2bad2a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })d with device error: 'INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:14.623644Z  WARN ThreadId(3578) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffd2a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })
+2026-05-19T17:54:14.623651Z  WARN ThreadId(3578) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None }) completed with error: Channel command (id=INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:16.464247Z  WARN test_bad_dma_address::not_modeled::test 88: using default selection for backend 'vfio_alias'
+ok
+test test_concurrent_event_throughput ... 2026-05-19T17:54:18.472048Z  WARN        test_concurrent_event_throughput 88: using default selection for
+ok
+test test_device_info ... 2026-05-19T17:54:21.633140Z  WARN                        test_device_info 88: using default selection for backend 'vfio_al
+ok
+test test_dma_bounce ... 2026-05-19T17:54:24.253260Z  WARN                         test_dma_bounce 88: using default selection for backend 'vfio_ali
+ok
+test test_double_signal ... 2026-05-19T17:54:27.629605Z  WARN                      test_double_signal 88: using default selection for backend 'vfio_
+ok
+test test_event_dependency_chain ... 2026-05-19T17:54:30.312413Z  WARN             test_event_dependency_chain 88: using default selection for backe
+ok
+test test_event_poison ... 2026-05-19T17:54:33.626332Z  WARN                       test_event_poison 88: using default selection for backend 'vfio_a
+2026-05-19T17:54:34.425925Z ERROR ThreadId(9135) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x78e1b6dd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }): Channel coe error: 'INVALID_ARGUMENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:34.425947Z  WARN ThreadId(9135) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuff6dd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+2026-05-19T17:54:34.425955Z  WARN ThreadId(9135) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat1152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }) completed with error: Channel command (id=0, type=4) fMENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:34.425973Z  WARN ThreadId(9135) 269: Event 1 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuff6dd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+ok
+test test_event_recycle ... 2026-05-19T17:54:37.624098Z  WARN                      test_event_recycle 88: using default selection for backend 'vfio_
+2026-05-19T17:54:38.437225Z  WARN                      test_event_recycle 366: Event pool exhausted. There are 4096 concurrent live events. Waiting
+ok
+test test_event_signal_wait ... 2026-05-19T17:54:39.449727Z  WARN                  test_event_signal_wait 88: using default selection for backend 'v
+ok
+test test_event_throughput ... 2026-05-19T17:54:42.621576Z  WARN                   test_event_throughput 88: using default selection for backend 'vf
+ok
+test test_fabric_weaver_commands::not_modeled::test ... 2026-05-19T17:54:51.538101Z  WARN test_fabric_weaver_commands::not_modeled::test 88: using das'
+ok
+test test_firmware_trace::not_modeled::test ... 2026-05-19T17:54:53.560683Z  WARN         test_firmware_trace::not_modeled::test 88: using default s
+ok
+test test_fw_info ... 2026-05-19T17:54:57.161048Z  WARN                                   test_fw_info 88: using default selection for backend 'vfio
+ok
+test test_map_unmap ... 2026-05-19T17:55:00.620319Z  WARN                                 test_map_unmap 88: using default selection for backend 'vf
+ok
+test test_single_dma ... 2026-05-19T17:55:03.239382Z  WARN                                test_single_dma 88: using default selection for backend 'v
+ok
+test test_single_nop_kernel ... 2026-05-19T17:55:06.617256Z  WARN                         test_single_nop_kernel 88: using default selection for bac
+ok
+test test_single_stream_dma_map_throughput ... 2026-05-19T17:55:09.155698Z  WARN          test_single_stream_dma_map_throughput 88: using default se
+ok
+test test_single_stream_dma_throughput ... 2026-05-19T17:55:30.686015Z  WARN              test_single_stream_dma_throughput 88: using default select
+ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 219.49s
+----------------------------------------------------------------------
+01:59:29 [INFO] PCIe-STV-Suite: [smoke chip 2] finished FAIL rc=0 summary=ok 22P/0F elapsed=226.4s
+01:59:29 [INFO] PCIe-STV-Suite:
+======================================================================
+CHIP 2  |  FAIL  |  rc=0  |  22P/0F (expected 21P/0F)  |  elapsed=226.4s
+======================================================================
+
+running 22 tests
+test concurrent_operations ... 2026-05-19T17:52:11.196468Z  WARN concurrent_operations 88: using default selection for backend 'vfio_alias'
+ok
+test test_all_stream_dma_throughput ... 2026-05-19T17:52:18.800364Z  WARN test_all_stream_dma_throughput 88: using default selection for backend 'vf
+ok
+test test_allocate ... 2026-05-19T17:54:02.265179Z  WARN                  test_allocate 88: using default selection for backend 'vfio_alias'
+ok
+test test_b2b_kernels ... 2026-05-19T17:54:04.430895Z  WARN               test_b2b_kernels 88: using default selection for backend 'vfio_alias'
+ok
+test test_bad_dma_address::not_modeled::test ... 2026-05-19T17:54:16.466827Z  WARN test_bad_dma_address::not_modeled::test 88: using default selecti
+2026-05-19T17:54:17.811128Z ERROR ThreadId(3578) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x7731d103a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None }ed with device error: 'INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:17.811160Z  WARN ThreadId(3578) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuff103a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })
+2026-05-19T17:54:17.811169Z  WARN ThreadId(3578) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None }) completed with error: Channel command (id'INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:18.457118Z  WARN test_bad_dma_address::not_modeled::test 88: using default selection for backend 'vfio_alias'
+ok
+test test_concurrent_event_throughput ... 2026-05-19T17:54:21.632754Z  WARN        test_concurrent_event_throughput 88: using default selection for
+ok
+test test_device_info ... 2026-05-19T17:54:24.252965Z  WARN                        test_device_info 88: using default selection for backend 'vfio_al
+ok
+test test_dma_bounce ... 2026-05-19T17:54:28.167752Z  WARN                         test_dma_bounce 88: using default selection for backend 'vfio_ali
+ok
+test test_double_signal ... 2026-05-19T17:54:31.627552Z  WARN                      test_double_signal 88: using default selection for backend 'vfio_
+ok
+test test_event_dependency_chain ... 2026-05-19T17:54:34.259092Z  WARN             test_event_dependency_chain 88: using default selection for backe
+ok
+test test_event_poison ... 2026-05-19T17:54:37.624233Z  WARN                       test_event_poison 88: using default selection for backend 'vfio_a
+2026-05-19T17:54:38.431422Z ERROR ThreadId(9135) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x7727fcdd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }): Channel coe error: 'INVALID_ARGUMENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:38.431448Z  WARN ThreadId(9135) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffcdd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+2026-05-19T17:54:38.431454Z  WARN ThreadId(9135) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat1152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }) completed with error: Channel command (id=0, type=4) fMENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:38.431471Z  WARN ThreadId(9135) 269: Event 1 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffcdd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+ok
+test test_event_recycle ... 2026-05-19T17:54:39.449170Z  WARN                      test_event_recycle 88: using default selection for backend 'vfio_
+2026-05-19T17:54:40.790885Z  WARN                      test_event_recycle 366: Event pool exhausted. There are 4096 concurrent live events. Waiting
+ok
+test test_event_signal_wait ... 2026-05-19T17:54:43.160653Z  WARN                  test_event_signal_wait 88: using default selection for backend 'v
+ok
+test test_event_throughput ... 2026-05-19T17:54:46.628142Z  WARN                   test_event_throughput 88: using default selection for backend 'vf
+ok
+test test_fabric_weaver_commands::not_modeled::test ... 2026-05-19T17:54:57.158597Z  WARN test_fabric_weaver_commands::not_modeled::test 88: using das'
+ok
+test test_firmware_trace::not_modeled::test ... 2026-05-19T17:55:00.620336Z  WARN         test_firmware_trace::not_modeled::test 88: using default s
+ok
+test test_fw_info ... 2026-05-19T17:55:03.239378Z  WARN                                   test_fw_info 88: using default selection for backend 'vfio
+ok
+test test_map_unmap ... 2026-05-19T17:55:06.617621Z  WARN                                 test_map_unmap 88: using default selection for backend 'vf
+ok
+test test_single_dma ... 2026-05-19T17:55:09.155597Z  WARN                                test_single_dma 88: using default selection for backend 'v
+ok
+test test_single_nop_kernel ... 2026-05-19T17:55:12.695918Z  WARN                         test_single_nop_kernel 88: using default selection for bac
+ok
+test test_single_stream_dma_map_throughput ... 2026-05-19T17:55:16.693704Z  WARN          test_single_stream_dma_map_throughput 88: using default se
+ok
+test test_single_stream_dma_throughput ... 2026-05-19T17:55:38.681521Z  WARN              test_single_stream_dma_throughput 88: using default select
+ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 226.12s
+----------------------------------------------------------------------
+01:59:33 [INFO] PCIe-STV-Suite: [smoke chip 4] finished FAIL rc=0 summary=ok 22P/0F elapsed=229.7s
+01:59:33 [INFO] PCIe-STV-Suite:
+======================================================================
+CHIP 4  |  FAIL  |  rc=0  |  22P/0F (expected 21P/0F)  |  elapsed=229.7s
+======================================================================
+
+running 22 tests
+test concurrent_operations ... 2026-05-19T17:52:11.194507Z  WARN concurrent_operations 88: using default selection for backend 'vfio_alias'
+ok
+test test_all_stream_dma_throughput ... 2026-05-19T17:52:18.800662Z  WARN test_all_stream_dma_throughput 88: using default selection for backend 'vf
+ok
+test test_allocate ... 2026-05-19T17:53:58.259887Z  WARN                  test_allocate 88: using default selection for backend 'vfio_alias'
+ok
+test test_b2b_kernels ... 2026-05-19T17:54:00.455754Z  WARN               test_b2b_kernels 88: using default selection for backend 'vfio_alias'
+ok
+test test_bad_dma_address::not_modeled::test ... 2026-05-19T17:54:20.274504Z  WARN test_bad_dma_address::not_modeled::test 88: using default selecti
+2026-05-19T17:54:21.798632Z ERROR ThreadId(3578) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x3b124e3a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })d with device error: 'INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:21.798664Z  WARN ThreadId(3578) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffe3a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })
+2026-05-19T17:54:21.798672Z  WARN ThreadId(3578) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None }) completed with error: Channel command (id=INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:23.635196Z  WARN test_bad_dma_address::not_modeled::test 88: using default selection for backend 'vfio_alias'
+ok
+test test_concurrent_event_throughput ... 2026-05-19T17:54:26.166229Z  WARN        test_concurrent_event_throughput 88: using default selection for
+ok
+test test_device_info ... 2026-05-19T17:54:29.628864Z  WARN                        test_device_info 88: using default selection for backend 'vfio_al
+ok
+test test_dma_bounce ... 2026-05-19T17:54:32.164443Z  WARN                         test_dma_bounce 88: using default selection for backend 'vfio_ali
+ok
+test test_double_signal ... 2026-05-19T17:54:35.627865Z  WARN                      test_double_signal 88: using default selection for backend 'vfio_
+ok
+test test_event_dependency_chain ... 2026-05-19T17:54:38.265090Z  WARN             test_event_dependency_chain 88: using default selection for backe
+ok
+test test_event_poison ... 2026-05-19T17:54:40.622343Z  WARN                       test_event_poison 88: using default selection for backend 'vfio_a
+2026-05-19T17:54:41.328126Z ERROR ThreadId(9135) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x3b0c0d82000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }): Channel com error: 'INVALID_ARGUMENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:41.328150Z  WARN ThreadId(9135) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffd82000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+2026-05-19T17:54:41.328157Z  WARN ThreadId(9135) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }) completed with error: Channel command (id=0, type=4) faENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:41.328177Z  WARN ThreadId(9135) 269: Event 1 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffd82000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+ok
+test test_event_recycle ... 2026-05-19T17:54:43.160911Z  WARN                      test_event_recycle 88: using default selection for backend 'vfio_
+2026-05-19T17:54:44.825440Z  WARN                      test_event_recycle 366: Event pool exhausted. There are 4096 concurrent live events. Waiting
+ok
+test test_event_signal_wait ... 2026-05-19T17:54:46.628668Z  WARN                  test_event_signal_wait 88: using default selection for backend 'v
+ok
+test test_event_throughput ... 2026-05-19T17:54:48.627212Z  WARN                   test_event_throughput 88: using default selection for backend 'vf
+ok
+test test_fabric_weaver_commands::not_modeled::test ... 2026-05-19T17:54:58.622416Z  WARN test_fabric_weaver_commands::not_modeled::test 88: using das'
+ok
+test test_firmware_trace::not_modeled::test ... 2026-05-19T17:55:02.620527Z  WARN         test_firmware_trace::not_modeled::test 88: using default s
+ok
+test test_fw_info ... 2026-05-19T17:55:05.244533Z  WARN                                   test_fw_info 88: using default selection for backend 'vfio
+ok
+test test_map_unmap ... 2026-05-19T17:55:08.616160Z  WARN                                 test_map_unmap 88: using default selection for backend 'vf
+ok
+test test_single_dma ... 2026-05-19T17:55:12.695028Z  WARN                                test_single_dma 88: using default selection for backend 'v
+ok
+test test_single_nop_kernel ... 2026-05-19T17:55:16.694026Z  WARN                         test_single_nop_kernel 88: using default selection for bac
+ok
+test test_single_stream_dma_map_throughput ... 2026-05-19T17:55:19.333158Z  WARN          test_single_stream_dma_map_throughput 88: using default se
+ok
+test test_single_stream_dma_throughput ... 2026-05-19T17:55:40.689530Z  WARN              test_single_stream_dma_throughput 88: using default select
+ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 229.48s
+----------------------------------------------------------------------
+01:59:39 [INFO] PCIe-STV-Suite: [smoke chip 0] finished FAIL rc=0 summary=ok 22P/0F elapsed=235.7s
+01:59:39 [INFO] PCIe-STV-Suite:
+======================================================================
+CHIP 0  |  FAIL  |  rc=0  |  22P/0F (expected 21P/0F)  |  elapsed=235.7s
+======================================================================
+
+running 22 tests
+test concurrent_operations ... 2026-05-19T17:52:11.197037Z  WARN concurrent_operations 88: using default selection for backend 'vfio_alias'
+ok
+test test_all_stream_dma_throughput ... 2026-05-19T17:52:21.410491Z  WARN test_all_stream_dma_throughput 88: using default selection for backend 'vf
+ok
+test test_allocate ... 2026-05-19T17:54:12.275369Z  WARN                  test_allocate 88: using default selection for backend 'vfio_alias'
+ok
+test test_b2b_kernels ... 2026-05-19T17:54:14.428531Z  WARN               test_b2b_kernels 88: using default selection for backend 'vfio_alias'
+ok
+test test_bad_dma_address::not_modeled::test ... 2026-05-19T17:54:27.630017Z  WARN test_bad_dma_address::not_modeled::test 88: using default selecti
+2026-05-19T17:54:28.337118Z ERROR ThreadId(3578) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x4f44ed3a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })d with device error: 'INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:28.337149Z  WARN ThreadId(3578) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffd3a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })
+2026-05-19T17:54:28.337157Z  WARN ThreadId(3578) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None }) completed with error: Channel command (id=INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:34.258637Z  WARN test_bad_dma_address::not_modeled::test 88: using default selection for backend 'vfio_alias'
+ok
+test test_concurrent_event_throughput ... 2026-05-19T17:54:37.624301Z  WARN        test_concurrent_event_throughput 88: using default selection for
+ok
+test test_device_info ... 2026-05-19T17:54:39.450007Z  WARN                        test_device_info 88: using default selection for backend 'vfio_al
+ok
+test test_dma_bounce ... 2026-05-19T17:54:42.621269Z  WARN                         test_dma_bounce 88: using default selection for backend 'vfio_ali
+ok
+test test_double_signal ... 2026-05-19T17:54:45.165574Z  WARN                      test_double_signal 88: using default selection for backend 'vfio_
+ok
+test test_event_dependency_chain ... 2026-05-19T17:54:49.163753Z  WARN             test_event_dependency_chain 88: using default selection for backe
+ok
+test test_event_poison ... 2026-05-19T17:54:51.538421Z  WARN                       test_event_poison 88: using default selection for backend 'vfio_a
+2026-05-19T17:54:52.800867Z ERROR ThreadId(9135) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x7e8d72dd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }): Channel coe error: 'INVALID_ARGUMENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:52.800891Z  WARN ThreadId(9135) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuff2dd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+2026-05-19T17:54:52.800897Z  WARN ThreadId(9135) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat1152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }) completed with error: Channel command (id=0, type=4) fMENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:52.800916Z  WARN ThreadId(9135) 269: Event 1 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuff2dd2000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+ok
+test test_event_recycle ... 2026-05-19T17:54:55.160717Z  WARN                      test_event_recycle 88: using default selection for backend 'vfio_
+2026-05-19T17:54:56.797503Z  WARN                      test_event_recycle 366: Event pool exhausted. There are 4096 concurrent live events. Waiting
+ok
+test test_event_signal_wait ... 2026-05-19T17:54:58.622351Z  WARN                  test_event_signal_wait 88: using default selection for backend 'v
+ok
+test test_event_throughput ... 2026-05-19T17:55:01.156901Z  WARN                   test_event_throughput 88: using default selection for backend 'vf
+ok
+test test_fabric_weaver_commands::not_modeled::test ... 2026-05-19T17:55:11.150686Z  WARN test_fabric_weaver_commands::not_modeled::test 88: using das'
+ok
+test test_firmware_trace::not_modeled::test ... 2026-05-19T17:55:14.695048Z  WARN         test_firmware_trace::not_modeled::test 88: using default s
+ok
+test test_fw_info ... 2026-05-19T17:55:17.232481Z  WARN                                   test_fw_info 88: using default selection for backend 'vfio
+ok
+test test_map_unmap ... 2026-05-19T17:55:20.694755Z  WARN                                 test_map_unmap 88: using default selection for backend 'vf
+ok
+test test_single_dma ... 2026-05-19T17:55:22.690152Z  WARN                                test_single_dma 88: using default selection for backend 'v
+ok
+test test_single_nop_kernel ... 2026-05-19T17:55:24.688995Z  WARN                         test_single_nop_kernel 88: using default selection for bac
+ok
+test test_single_stream_dma_map_throughput ... 2026-05-19T17:55:26.690982Z  WARN          test_single_stream_dma_map_throughput 88: using default se
+ok
+test test_single_stream_dma_throughput ... 2026-05-19T17:55:46.686229Z  WARN              test_single_stream_dma_throughput 88: using default select
+ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 235.48s
+----------------------------------------------------------------------
+01:59:43 [INFO] PCIe-STV-Suite: [smoke chip 1] finished FAIL rc=0 summary=ok 22P/0F elapsed=240.5s
+01:59:43 [INFO] PCIe-STV-Suite:
+======================================================================
+CHIP 1  |  FAIL  |  rc=0  |  22P/0F (expected 21P/0F)  |  elapsed=240.5s
+======================================================================
+
+running 22 tests
+test concurrent_operations ... 2026-05-19T17:52:11.190527Z  WARN concurrent_operations 88: using default selection for backend 'vfio_alias'
+ok
+test test_all_stream_dma_throughput ... 2026-05-19T17:52:18.800469Z  WARN test_all_stream_dma_throughput 88: using default selection for backend 'vf
+ok
+test test_allocate ... 2026-05-19T17:53:58.259511Z  WARN                  test_allocate 88: using default selection for backend 'vfio_alias'
+ok
+test test_b2b_kernels ... 2026-05-19T17:54:00.464346Z  WARN               test_b2b_kernels 88: using default selection for backend 'vfio_alias'
+ok
+test test_bad_dma_address::not_modeled::test ... 2026-05-19T17:54:16.466819Z  WARN test_bad_dma_address::not_modeled::test 88: using default selecti
+2026-05-19T17:54:17.800191Z ERROR ThreadId(3578) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x3959cd2a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })d with device error: 'INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:17.800214Z  WARN ThreadId(3578) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffd2a000, size: 8192 }, iova: 3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None })
+2026-05-19T17:54:17.800220Z  WARN ThreadId(3578) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat3735928544 }, poisoned: false, .. }, buffer_offset: 0, device_address: 4096, length: 8192, label: None }) completed with error: Channel command (id=INTERNAL', code: 0x2, value: 0xa0248
+2026-05-19T17:54:18.457192Z  WARN test_bad_dma_address::not_modeled::test 88: using default selection for backend 'vfio_alias'
+ok
+test test_concurrent_event_throughput ... 2026-05-19T17:54:21.633280Z  WARN        test_concurrent_event_throughput 88: using default selection for
+ok
+test test_device_info ... 2026-05-19T17:54:24.253424Z  WARN                        test_device_info 88: using default selection for backend 'vfio_al
+ok
+test test_dma_bounce ... 2026-05-19T17:54:27.629374Z  WARN                         test_dma_bounce 88: using default selection for backend 'vfio_ali
+ok
+test test_double_signal ... 2026-05-19T17:54:30.166209Z  WARN                      test_double_signal 88: using default selection for backend 'vfio_
+ok
+test test_event_dependency_chain ... 2026-05-19T17:54:33.626371Z  WARN             test_event_dependency_chain 88: using default selection for backe
+ok
+test test_event_poison ... 2026-05-19T17:54:43.239163Z  WARN                       test_event_poison 88: using default selection for backend 'vfio_a
+2026-05-19T17:54:44.800159Z ERROR ThreadId(9135) 133: Stream encountered error on command id:0, command:Dma(HostToDevice { host_buffer: Mutex { data{ data: 0x3959cd82000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }): Channel com error: 'INVALID_ARGUMENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:44.800187Z  WARN ThreadId(9135) 269: Event 0 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffd82000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+2026-05-19T17:54:44.800192Z  WARN ThreadId(9135) 36: Command Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffer { buffer: DmaBuffer { dat152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None }) completed with error: Channel command (id=0, type=4) faENT', code: 0x1, value: 0x89000
+2026-05-19T17:54:44.800211Z  WARN ThreadId(9135) 269: Event 1 poisoned by: id:0, command:Dma(HostToDevice { host_buffer: Mutex { data: MappedDmaBuffd82000, size: 1 }, iova: 561152 }, poisoned: false, .. }, buffer_offset: 0, device_address: 0, length: 0, label: None })
+ok
+test test_event_recycle ... 2026-05-19T17:54:47.165195Z  WARN                      test_event_recycle 88: using default selection for backend 'vfio_
+2026-05-19T17:54:48.797731Z  WARN                      test_event_recycle 366: Event pool exhausted. There are 4096 concurrent live events. Waiting
+ok
+test test_event_signal_wait ... 2026-05-19T17:54:51.537788Z  WARN                  test_event_signal_wait 88: using default selection for backend 'v
+ok
+test test_event_throughput ... 2026-05-19T17:54:54.624275Z  WARN                   test_event_throughput 88: using default selection for backend 'vf
+ok
+test test_fabric_weaver_commands::not_modeled::test ... 2026-05-19T17:55:03.239374Z  WARN test_fabric_weaver_commands::not_modeled::test 88: using das'
+ok
+test test_firmware_trace::not_modeled::test ... 2026-05-19T17:55:06.616861Z  WARN         test_firmware_trace::not_modeled::test 88: using default s
+ok
+test test_fw_info ... 2026-05-19T17:55:09.155433Z  WARN                                   test_fw_info 88: using default selection for backend 'vfio
+ok
+test test_map_unmap ... 2026-05-19T17:55:12.695832Z  WARN                                 test_map_unmap 88: using default selection for backend 'vf
+ok
+test test_single_dma ... 2026-05-19T17:55:15.233408Z  WARN                                test_single_dma 88: using default selection for backend 'v
+ok
+test test_single_nop_kernel ... 2026-05-19T17:55:18.692394Z  WARN                         test_single_nop_kernel 88: using default selection for bac
+ok
+test test_single_stream_dma_map_throughput ... 2026-05-19T17:55:21.232354Z  WARN          test_single_stream_dma_map_throughput 88: using default se
+ok
+test test_single_stream_dma_throughput ... 2026-05-19T17:55:42.688680Z  WARN              test_single_stream_dma_throughput 88: using default select
+ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 240.25s
+----------------------------------------------------------------------
+
+
