@@ -24,4 +24,51 @@ INFO:     Waiting for application shutdown.
 2026-05-21 19:01:14,706 - app.main - INFO - Shell service cleanup completed
 2026-05-21 19:01:14,707 - app.main - INFO - Application shutdown complete
 INFO:     Application shutdown complete.
-(.venv) PS C:\Users\us62024761\Downloads\CAP-main\CAP-main\backend> 
+(.venv) PS C:\Users\us62024761\Downloads\CAP-main\CAP-main\backend> python -m uvicorn app.main:app --host 127.0.0.1 --port 8091
+WARNING: .env file not found at C:\Users\us62024761\Downloads\CAP-main\CAP-main\.env
+CAP_ROOT env var not set, defaulting to D:/CAP
+INFO:     Started server process [19432]
+INFO:     Waiting for application startup.
+2026-05-21 19:07:29,105 - app.main - INFO - Application starting up...
+2026-05-21 19:07:29,105 - app.services.monitoring_service - INFO - WebSocket connection manager initialized with limits: 10 per stream, 100 total
+2026-05-21 19:07:29,106 - app.services.monitoring_service - INFO - MonitoringService initialized
+2026-05-21 19:07:29,106 - app.main - INFO - Monitoring service initialized
+2026-05-21 19:07:29,106 - app.services.log_service - INFO - LogService initialized
+2026-05-21 19:07:29,106 - app.main - INFO - Log service initialized
+2026-05-21 19:07:29,106 - app.main - INFO - All services initialized successfully
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8091 (Press CTRL+C to quit)
+INFO:     127.0.0.1:54084 - "OPTIONS /api/log_levels HTTP/1.1" 400 Bad Request
+2026-05-21 19:11:03,046 - app.services.workspace_manager_service - INFO - Discovered 16 CAF libraries
+2026-05-21 19:11:03,046 - app.services.workspace_manager_service - INFO - WorkspaceManager initialized with 0 workspaces (multi-user mode)
+2026-05-21 19:11:03,046 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+2026-05-21 19:11:03,047 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+2026-05-21 19:11:03,047 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+INFO:     127.0.0.1:54084 - "GET /workspace/tree HTTP/1.1" 200 OK
+2026-05-21 19:11:03,052 - app.utils.path_detector - INFO - Found existing workspace at: C:\Users\us62024761\CAP-Workspaces
+INFO:     127.0.0.1:54084 - "GET /workspace-manager/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54084 - "GET /api/updates/check HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54084 - "OPTIONS /api/tests/enhanced-active?workspace_id=global HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:54084 - "OPTIONS /api/devices/ HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:54084 - "OPTIONS /api/log_levels HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:54084 - "OPTIONS /api/tests/enhanced-active?workspace_id=global HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:54084 - "OPTIONS /api/devices/ HTTP/1.1" 400 Bad Request
+2026-05-21 19:11:03,061 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+2026-05-21 19:11:03,062 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+INFO:     127.0.0.1:54084 - "GET /workspace/tree HTTP/1.1" 200 OK
+2026-05-21 19:11:03,064 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+INFO:     127.0.0.1:54084 - "GET /workspace/list?path= HTTP/1.1" 200 OK
+2026-05-21 19:11:03,067 - app.utils.path_detector - INFO - Found existing workspace at: C:\Users\us62024761\CAP-Workspaces
+INFO:     127.0.0.1:54084 - "GET /workspace-manager/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54084 - "GET /api/updates/check HTTP/1.1" 200 OK
+2026-05-21 19:11:03,069 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+2026-05-21 19:11:03,070 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+INFO:     127.0.0.1:54084 - "GET /workspace/tree HTTP/1.1" 200 OK
+2026-05-21 19:11:03,073 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+INFO:     127.0.0.1:54084 - "GET /workspace/list?path= HTTP/1.1" 200 OK
+2026-05-21 19:11:03,105 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
+INFO:     127.0.0.1:54084 - "GET /workspace/list?path= HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54092 - "GET /api/tests/dashboard/view HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54085 - "OPTIONS /api/devices/ HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:54085 - "OPTIONS /api/devices/ HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:54693 - "GET /health HTTP/1.1" 200 OK
