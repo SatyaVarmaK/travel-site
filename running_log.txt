@@ -1,55 +1,61 @@
-(.venv) PS C:\Users\us62024761\Downloads\CAP-main\CAP-main\backend> $env:ALLOW_ALL_ORIGINA = "1"
-(.venv) PS C:\Users\us62024761\Downloads\CAP-main\CAP-main\backend> python -m uvicorn app.main:app --host 127.0.0.1 --port 8091
-WARNING: .env file not found at C:\Users\us62024761\Downloads\CAP-main\CAP-main\.env
-CAP_ROOT env var not set, defaulting to D:/CAP
-INFO:     Started server process [12868]
-INFO:     Waiting for application startup.
-2026-05-21 19:17:09,256 - app.main - INFO - Application starting up...
-2026-05-21 19:17:09,256 - app.services.monitoring_service - INFO - WebSocket connection manager initialized with limits: 10 per stream, 100 total
-2026-05-21 19:17:09,256 - app.services.monitoring_service - INFO - MonitoringService initialized
-2026-05-21 19:17:09,256 - app.main - INFO - Monitoring service initialized
-2026-05-21 19:17:09,256 - app.services.log_service - INFO - LogService initialized
-2026-05-21 19:17:09,257 - app.main - INFO - Log service initialized
-2026-05-21 19:17:09,257 - app.main - INFO - All services initialized successfully
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:8091 (Press CTRL+C to quit)
-INFO:     127.0.0.1:55288 - "OPTIONS /api/log_levels HTTP/1.1" 400 Bad Request
-2026-05-21 19:17:24,043 - app.services.workspace_manager_service - INFO - Discovered 16 CAF libraries
-2026-05-21 19:17:24,043 - app.services.workspace_manager_service - INFO - WorkspaceManager initialized with 0 workspaces (multi-user mode)
-2026-05-21 19:17:24,043 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-2026-05-21 19:17:24,043 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-2026-05-21 19:17:24,044 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-INFO:     127.0.0.1:55288 - "GET /workspace/tree HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55291 - "OPTIONS /api/tests/enhanced-active?workspace_id=global HTTP/1.1" 400 Bad Request
-INFO:     127.0.0.1:55288 - "OPTIONS /api/tests/enhanced-active?workspace_id=global HTTP/1.1" 400 Bad Request
-2026-05-21 19:17:24,055 - app.utils.path_detector - INFO - Found existing workspace at: C:\Users\us62024761\CAP-Workspaces
-INFO:     127.0.0.1:55292 - "OPTIONS /api/devices/ HTTP/1.1" 400 Bad Request
-INFO:     127.0.0.1:55290 - "GET /api/updates/check HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55293 - "OPTIONS /api/log_levels HTTP/1.1" 400 Bad Request
-INFO:     127.0.0.1:55289 - "GET /workspace-manager/workspaces HTTP/1.1" 200 OK
-2026-05-21 19:17:24,058 - asyncio - ERROR - Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
-handle: <Handle _ProactorBasePipeTransport._call_connection_lost(None)>
-Traceback (most recent call last):
-  File "C:\Program Files\Python312\Lib\asyncio\events.py", line 88, in _run
-    self._context.run(self._callback, *self._args)
-  File "C:\Program Files\Python312\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
-    self._sock.shutdown(socket.SHUT_RDWR)
-ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
-INFO:     127.0.0.1:55290 - "OPTIONS /api/devices/ HTTP/1.1" 400 Bad Request
-2026-05-21 19:17:24,073 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-2026-05-21 19:17:24,074 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-INFO:     127.0.0.1:55289 - "GET /workspace/tree HTTP/1.1" 200 OK
-2026-05-21 19:17:24,076 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-INFO:     127.0.0.1:55290 - "GET /workspace/list?path= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55289 - "GET /api/updates/check HTTP/1.1" 200 OK
-2026-05-21 19:17:24,080 - app.utils.path_detector - INFO - Found existing workspace at: C:\Users\us62024761\CAP-Workspaces
-2026-05-21 19:17:24,081 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-2026-05-21 19:17:24,081 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-INFO:     127.0.0.1:55290 - "GET /workspace-manager/workspaces HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55289 - "GET /workspace/tree HTTP/1.1" 200 OK
-2026-05-21 19:17:24,083 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-INFO:     127.0.0.1:55290 - "GET /workspace/list?path= HTTP/1.1" 200 OK
-2026-05-21 19:17:24,115 - app.services.workspace_service - INFO - WorkspaceService updated with base path: \app\user-workspace
-INFO:     127.0.0.1:55290 - "GET /workspace/list?path= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55299 - "GET /api/tests/dashboard/view HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55290 - "OPTIONS /api/devices/ HTTP/1.1" 400 Bad Request
+Last login: Thu May 21 20:25:08 2026 from 10.64.101.111
+[?2004h]0;hps-test3@hpscrt3: ~ [01;32mhps-test3@hpscrt3[00m:[01;34m~[00m$ 
+[K
+]0;hps-test3@hpscrt3: ~ [01;32mhps-test3@hpscrt3[00m:[01;34m~[00m$ 
+[?2004l
+[?2004h]0;hps-test3@hpscrt3: ~ [01;32mhps-test3@hpscrt3[00m:[01;34m~[00m$ 
+[?2004l
+[?2004h]0;hps-test3@hpscrt3: ~ [01;32mhps-test3@hpscrt3[00m:[01;34m~[00m$ df -h
+[?2004l
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs            13G  116M   13G   1% /run
+/dev/nvme1n1p2  366G   87G  261G  25% /
+tmpfs            63G   84K   63G   1% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+efivarfs        304K  225K   75K  76% /sys/firmware/efi/efivars
+/dev/nvme1n1p3  1.1G  6.2M  1.1G   1% /boot/efi
+/dev/nvme1n1p4  511G   95G  391G  20% /home
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/5099d20a30db898bcc906c4569bd808091e6970c783e41964b8c5bb8da70ae60/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/b87994240ed608c904387f8c16f916a2ac07d33e09f3645f01362c512fa5550c/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/433a1fd64f2c05df23626b45580ff4d82dc87a66274521f87d2fae2d8b74b1dc/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/4d4a5b289807fef2dc7de510267b7a98c6051a29fc71b91795fb6200197811cc/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/01c6db59daaa1f8321a3354cd062c59c4439d09b1684358d80166eb75292ed99/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/4b4526441df61f68a9848aa0b0bab051ae173880d1869f55287e7675008b64c7/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/b376af78f36f0b1ba5ae2735427a57d71b49722e3662aeb0b660578e2f2d7a61/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/3d7944dced1536df34bac731c7a1dc6632c46ce07f4332d8609181a542d5cfdf/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/135878f8c2bd973a1f87f07fe02ceba68a6bd1b3d5fdc809c2e4c95567c5fdd9/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/d541fb0c50501b1ba05b358f4c0111f60a82d5caab5ec79591340f4f98ddce20/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/5e3145b1bcd842b749b321c08478dc59a3813bdd6eef204812a2d7f639f88306/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/86a0394c1620c8f3a2e1900d029ce7aea0d95bc7a4b934e7a8fade80ca9ea6d1/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/c47723225e7cae072648086aa0b94b24d10455604a4a3a346b9c12cc188b13a2/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/2210ed8dc34cf36ba938ae514ea0775f482255bbbbd5a6dfdac1a626c2cd574b/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/ac43bdbd395c85f344e5a5a202eafb9ec23b7b04edd1dcec51c217ac0d130fa8/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/7caabdaf9f8616ec2d18aedaa104244e7d6a2397efb79100e294941c4caa94bf/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/555b28c6de04674ed0fdc9cd678e4987ee3ed4aaefa71048fbb7384a7944f763/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/6aa965da0a4858f72ff5c1b738522533b53a469627ee8c9b2cf51169a47d45fb/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/e0273760365b22612f3a79a25af5d970f060d9eb2846be82a40bf889eb047c33/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/a94f5697c6a009dc6ff8fe464561a68723e267491cfa3bd36cf5d1b6eb020302/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/a6ef1e1f700a991d7005604d6f385d4466cb47617d96a59ea375013815221e24/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/8c4f26c196b433f17dc67a93c3831603c0ae82bd218e0b69d9ec5f49cf85a856/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/db8585919aafa1d6de1d651062c2b066f7dce8e3910f84bd09e7822d18c0eddf/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/c248355041aba4f4cf2862194ea1b33912483a6903079a6f451c6c253f0e8b3e/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/2be7e230726335a1fcb6fc60672d3947477565a6703e75dbee355493902eeef2/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/d5dbba5268ddd41a146cd9876b138cc3473ca8c780944087f03795365c3303bc/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/a375c249a2b1cdab3464bb5a50b9696185637fcc3cfe2863760834938b0206a5/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/cb949bdb0ae5dbf1a6aaeef07c22d473ba3ad07bd6014cc0e93436575234d2b3/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/7e9f8299cc4efa0a2e3263622f3fafc8863f2947e5fb40eca8770387e2216f0d/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/5815f580b111b97249237518f12fa1816b93e81cefa9ac6525b02dbda00c5779/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/b05d6fa1cb263e3fc832b8d6e8634f9097f2f4d7f18a4d71fdf6cd151ea029d1/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/2403eef9f93441815a5499fdded97ddf772d1142fa4a2ced6e4629e8688e2e05/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/a39d4960464841cf1493996ff3c779b600a54a979130214c3e79060ecd1da6c0/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/82f977a525034aa4461979068ab493b1891742e56f5b75797051098737211560/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/b2d8e86d531dabeac1d0fa4a30826d04f591af21d50d4f904b01cc9aa9bff7f2/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/25787a8cc8c7170a53fe1bddc4bcff67e9ff7d1480fb2af969fd3e7b9d9e000f/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/d354e65ef6f2daf2ce4d0d818a74122f6ff0cb04e81b72075fbf744bac0dc375/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/7b80d8c30c2665a87982366f7f55aab077bd4a2daf5c571d3f8df738704f77b0/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/1a541579be81a3b7791c16e36391ed1d67c961b9e2a5a1a6fefb284e6056f239/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/ca929d07e9cae60994df02911b28bb6e64c1ae83862adb8f6059bf8d5e67f83c/shm
+shm              64M  1.1M   63M   2% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/e774c710202ab2684b51980fd46ce36d556c3115d40871d92e10aa410b0617a1/shm
+shm              64M     0   64M   0% /var/snap/microk8s/common/run/containerd/io.containerd.grpc.v1.cri/sandboxes/ddb7964923b4fa9636f94de5177783a0bfc3b8d31b4d954dcabf8f0682974d47/shm
+tmpfs            13G  160K   13G   1% /run/user/1000
+[?2004h]0;hps-test3@hpscrt3: ~ [01;32mhps-test3@hpscrt3[00m:[01;34m~[00m$ 
