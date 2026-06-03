@@ -1,14 +1,2303 @@
-version: 1
-presets:
-  - id: net-check
-    name: Network check
-    command: ip a
-    mode: oneshot          # run once, tab stays with output
-  - id: cpu-live
-    name: CPU live
-    command: top
-    mode: stream           # keeps updating until you stop/close tab
-  - id: debug-shell
-    name: Debug shell
-    command: ip a
-    mode: interactive      # opens Shell tab, runs command, stays at prompt
+#!/usr/bin/env python3
+import os
+import sys
+import re
+import time
+import signal
+import argparse
+import subprocess
+import logging
+import threading
+import concurrent.futures
+import shlex
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+import paramiko
+
+try:
+    import fcntl
+except ImportError:  # non-POSIX (e.g. Windows dev box); locking is enforced on the Linux server.
+    fcntl = None
+
+# --- DYNAMIC SCRIPT DIRECTORY ---
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+WORKSPACE_DIR = "/home/hpsroot/Arvind-SIT/vindaloo_stv/packages-katsu"
+UNIDIAG_BIN = "/home/hpsroot/venv-katsu/bin/unidiag"
+CONFIG_PATH = os.path.join(WORKSPACE_DIR, "config_t2.yaml")
+
+# Path to the STV YAML used by unidiag
+STV_YAML_PATH = "/home/hpsroot/venv-katsu/lib/python3.12/site-packages/unidiag/config/katsu/stv.yaml"
+
+# --- PARALLEL SENSOR COLLECTORS ---
+CUSTOM_SENSOR_MONITOR_SCRIPT = os.path.join(SCRIPT_DIR, "custom_sensor_monitor.py")
+DISPLAY_SENSORS_STV_SCRIPT = os.path.join(SCRIPT_DIR, "display_sensors_stv.py")
+# Optional safety cap only. Default: collectors run until STV ends, then export.
+DEFAULT_SENSOR_MAX_DURATION_S: Optional[int] = None
+DEFAULT_ASIC_SENSOR_DURATION_S = DEFAULT_SENSOR_MAX_DURATION_S
+PARALLEL_COLLECTOR_STOP_TIMEOUT_S = 10 * 60
+# Allow custom_sensor_monitor.py to catch SIGINT and stop remote nexus_snort cleanly.
+SENSOR_COLLECTOR_CLEANUP_GRACE_S = 10
+# Wait for Katsu driver/process to settle after remote nexus_snort stops.
+NEXUS_SNORT_POST_CLEANUP_SETTLE_S = 5
+
+ASIC_SENSOR_SCRIPT_MARKER = "custom_sensor_monitor.py"
+BMC_SENSOR_SCRIPT_MARKER = "display_sensors_stv.py"
+
+# --- KATSU CPU LOGIN SETTINGS ---
+KATSU_CPU_USERNAME = "root"
+KATSU_CPU_PASSWORD = "admin@123"
+
+# --- KATSU BUILD-PHASE (SILICON REVISION) GUARD ---
+# The PCIe switch RevId reported by `switchclid.x86_64 -i 1 list` identifies the
+# build phase: A0 -> EVT, B0 -> DVT. The suite refuses to run if the unit's
+# revision does not match the phase this script targets.
+KATSU_REV_TO_PHASE = {"A0": "EVT", "B0": "DVT"}
+# This script targets DVT units. A separate EVT deployment should set this to "A0".
+EXPECTED_KATSU_REV = "B0"
+SWITCHCLID_LIST_CMD = "switchclid.x86_64 -i 1 list"
+
+# --- KATSU TOOL VERSION REPORTING ---
+# Tools probed with `--version` at suite start (informational). Tools that don't
+# implement --version (e.g. hotpackets, smoke_nexus) are reported as unavailable.
+# stream.exe is intentionally excluded: it ignores args and runs a benchmark.
+KATSU_VERSION_TOOLS = [
+    "nexus_aacs",
+    "nexus_bootstrap",
+    "nexus_sniff",
+    "nexus_snort",
+    "pcie_aer",
+    "hotpackets",
+    "smoke_nexus",
+]
+
+# --- VINDALOO BMC LOGIN SETTINGS ---
+BMC_USERNAME = "root"
+BMC_PASSWORD = "0penBmc"
+
+# --- UCD / MAX31732 SETTINGS ---
+UCD_READ_BUSES = [6, 7, 9, 10, 11, 12, 13, 15]
+UCD_CLEAR_BUSES = [6, 7, 9, 10, 11, 12, 13, 15]
+
+THERMAL_FAULT_KEYWORDS = [
+    "FAULT_EXT_TEMP_SENSE_L_3V3",
+    "GPI_FAULT",
+    "EXT_TEMP",
+]
+
+# Sentinel values in test_mapping (not unidiag shell commands).
+PARALLEL_ASIC_SENSORS = "__parallel_asic_sensors__"
+PARALLEL_BMC_SENSORS = "__parallel_bmc_sensors__"
+
+# --- UNIDIAG STV COMMANDS ---
+def build_stv_commands(config_path: str) -> Dict[str, str]:
+    """Build the unidiag STV command table for a specific config file (slot)."""
+    return {
+        "smoke_test": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test smoke_test",
+        "device_info_check": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test device_info_check",
+        "pcie_tree_check": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test pcie_tree_check",
+        "sensor_temp": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test sensor_check temperature",
+        "sensor_volt": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test sensor_check voltage",
+        "sensor_curr": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test sensor_check current",
+        "log_check": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test log_check",
+        "pcie_aer": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test pcie_aer",
+        "rni_link_check": f"{UNIDIAG_BIN} -c {config_path} test_compute stv_test rni_link_check",
+    }
+
+
+# Rebuilt in main() once the slot/config is resolved. Default keeps single-run behavior.
+STV_COMMANDS = build_stv_commands(CONFIG_PATH)
+
+# --- SLOT -> CONFIG MAPPING (per-unit configs for parallel runs) ---
+# Each physical slot uses its own unidiag config file so concurrent operators
+# don't share (and corrupt) one config_t2.yaml.
+SLOT_CONFIG_MAP = {
+    "t1": os.path.join(WORKSPACE_DIR, "config_t1.yaml"),
+    "t2": os.path.join(WORKSPACE_DIR, "config_t2.yaml"),
+    "t3": os.path.join(WORKSPACE_DIR, "config_t3.yaml"),
+}
+
+
+def _acquire_exclusive_lock(lock_path: str):
+    """
+    Take an exclusive, non-blocking flock on lock_path.
+
+    The OS releases the lock automatically when the process exits for any reason
+    (normal exit, Ctrl+C, or kill), so a crashed/aborted run never leaves a stale
+    lock. Returns the open lock file object on success, or None if another run
+    already holds it. Callers must keep the returned object alive for the whole run.
+    """
+    if fcntl is None:
+        logging.getLogger("PCIe-STV-Suite").warning(
+            "fcntl unavailable on this platform; skipping lock for %s.", lock_path
+        )
+        return open(lock_path, "w")
+
+    lock_fd = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock_fd.close()
+        return None
+    except OSError:
+        lock_fd.close()
+        raise
+
+    try:
+        lock_fd.write(f"{os.getpid()} {datetime.now().isoformat()}\n")
+        lock_fd.flush()
+    except Exception:
+        pass
+
+    return lock_fd
+
+
+def acquire_config_lock(config_path: str):
+    """Exclusive lock tied to a config slot file (one operator per config_tX.yaml)."""
+    return _acquire_exclusive_lock(config_path + ".lock")
+
+
+def acquire_target_lock(cpu_ip: str, lock_dir: str):
+    """
+    Exclusive lock keyed on the target Katsu CPU IP.
+
+    The config lock only guards a config *slot*; this lock guards the physical
+    unit. Without it, an operator who launches the same IP in two terminals would
+    auto-pick two different free slots and both runs would proceed -- the second
+    run's startup cleanup then kills the first run's nexus_snort/sensor collection.
+    Returns the lock fd, or None if another run already targets this IP.
+    """
+    safe_ip = cpu_ip.replace(".", "_").replace(":", "_")
+    return _acquire_exclusive_lock(os.path.join(lock_dir, f".target_katsu_{safe_ip}.lock"))
+
+
+def release_config_lock(lock_fd) -> None:
+    """Release a lock acquired above. Safe to call once; OS also releases it on exit."""
+    if lock_fd is None:
+        return
+    try:
+        if fcntl is not None:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    except Exception:
+        pass
+    finally:
+        try:
+            lock_fd.close()
+        except Exception:
+            pass
+
+
+def auto_acquire_free_slot() -> Tuple[Optional[str], Optional[str], object]:
+    """
+    Try to lock the first free slot, in order.
+
+    Acquisition is atomic per slot (try-lock, not check-then-lock), so two
+    operators starting at the same time can never grab the same slot. Returns
+    (slot_label, config_path, lock_fd); lock_fd is None if every slot is busy.
+    """
+    for slot in sorted(SLOT_CONFIG_MAP.keys()):
+        config_path = os.path.abspath(SLOT_CONFIG_MAP[slot])
+        lock_fd = acquire_config_lock(config_path)
+        if lock_fd is not None:
+            return slot, config_path, lock_fd
+        logger.info("Slot '%s' is busy; trying next slot...", slot)
+
+    return None, None, None
+
+# --- PARALLEL SMOKE TEST SETTINGS ---
+SMOKE_TEST_CHIPS = list(range(8))
+SMOKE_TEST_PARALLELISM = 8
+SMOKE_TEST_SSH_TIMEOUT_S = 30
+SMOKE_TEST_CHIP_TIMEOUT_S = 10 * 60
+SMOKE_TEST_REMOTE_TIMEOUT_S = 600
+SMOKE_TEST_HEARTBEAT_S = 60
+
+SMOKE_NEXUS_CMD_TEMPLATE = (
+    f'timeout --kill-after=15s {SMOKE_TEST_REMOTE_TIMEOUT_S}s '
+    'smoke_nexus --nocapture --test "" --skip :compute_die: '
+    '--test-threads=1 -- --silicon-mode '
+    '--device-instance chip_id:{chip_id}'
+)
+
+SMOKE_RESULT_RE = re.compile(
+    r"test result:\s+(?P<status>ok|FAILED)\.\s+"
+    r"(?P<passed>\d+)\s+passed;\s+"
+    r"(?P<failed>\d+)\s+failed"
+)
+
+_smoke_dump_lock = threading.Lock()
+
+# --- LOGGING SETUP ---
+log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+date_format = "%H:%M:%S"
+
+
+class SmartFormatter(logging.Formatter):
+    def __init__(self) -> None:
+        super().__init__(log_format, datefmt=date_format)
+        self._bare = logging.Formatter("%(message)s")
+
+    def format(self, record: logging.LogRecord) -> str:
+        if record.name.endswith(".raw"):
+            return self._bare.format(record)
+        return super().format(record)
+
+
+_smart_formatter = SmartFormatter()
+
+_stdout_handler = logging.StreamHandler(sys.stdout)
+_stdout_handler.setFormatter(_smart_formatter)
+logging.basicConfig(level=logging.INFO, handlers=[_stdout_handler])
+
+logger = logging.getLogger("PCIe-STV-Suite")
+raw_logger = logging.getLogger("PCIe-STV-Suite.raw")
+raw_logger.setLevel(logging.INFO)
+
+logging.getLogger("paramiko").setLevel(logging.WARNING)
+
+
+def log_test_case_start(test_case_name: str) -> None:
+    logger.info("=" * 70)
+    logger.info(f"🚀 TEST CASE BEGIN: {test_case_name.upper()}")
+    logger.info("=" * 70)
+
+
+# --- EXECUTION SUMMARY ---
+class ExecutionSummary:
+    def __init__(self) -> None:
+        self.test_results: Dict[str, bool] = {}
+
+    def record_test(self, test_name: str, passed: bool) -> None:
+        self.test_results[test_name] = passed
+
+    def print_summary(self) -> None:
+        logger.info("=" * 75)
+        logger.info("🚀 FINAL EXECUTION SUMMARY".center(75))
+        logger.info("=" * 75)
+
+        if not self.test_results:
+            logger.info("  No tests executed.")
+
+        for test, passed in self.test_results.items():
+            icon = "✅ PASS" if passed else "❌ FAIL"
+            logger.info(f"  {icon:<7} | {test}")
+
+        logger.info("=" * 75)
+
+
+# --- PARALLEL SENSOR COLLECTOR SUBPROCESSES ---
+def _read_process_cmdline(pid: int) -> str:
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as proc_file:
+            return proc_file.read().replace(b"\x00", b" ").decode("utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+
+def _pgrep_candidate_pids(script_marker: str) -> List[int]:
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", script_marker],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        logger.warning("Could not pgrep for %r: %s", script_marker, exc)
+        return []
+
+    if result.returncode == 1:
+        return []
+    if result.returncode != 0:
+        logger.warning(
+            "pgrep for %r returned rc=%s: %s",
+            script_marker,
+            result.returncode,
+            result.stderr.strip(),
+        )
+        return []
+
+    current_pid = os.getpid()
+    pids: List[int] = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line.isdigit():
+            continue
+        pid = int(line)
+        if pid != current_pid:
+            pids.append(pid)
+    return pids
+
+
+def _matches_asic_collector_cmdline(cmdline: str, katsu_ip: str, vindaloo_bmc_ip: str) -> bool:
+    if ASIC_SENSOR_SCRIPT_MARKER not in cmdline:
+        return False
+    return (
+        f"--katsu-host {katsu_ip}" in cmdline
+        and f"--device-ip {vindaloo_bmc_ip}" in cmdline
+    )
+
+
+def _matches_bmc_collector_cmdline(cmdline: str, vindaloo_bmc_ip: str) -> bool:
+    if BMC_SENSOR_SCRIPT_MARKER not in cmdline:
+        return False
+    return (
+        f"--ip {vindaloo_bmc_ip}" in cmdline
+        or f"{BMC_SENSOR_SCRIPT_MARKER} {vindaloo_bmc_ip}" in cmdline
+    )
+
+
+def _find_target_collector_pids(
+    script_marker: str,
+    katsu_ip: str,
+    vindaloo_bmc_ip: str,
+    *,
+    collector_kind: str,
+) -> List[int]:
+    matched: List[int] = []
+
+    for pid in _pgrep_candidate_pids(script_marker):
+        cmdline = _read_process_cmdline(pid)
+        if collector_kind == "asic" and _matches_asic_collector_cmdline(
+            cmdline, katsu_ip, vindaloo_bmc_ip
+        ):
+            matched.append(pid)
+        elif collector_kind == "bmc" and _matches_bmc_collector_cmdline(cmdline, vindaloo_bmc_ip):
+            matched.append(pid)
+
+    return matched
+
+
+def _signal_collector_pids(pids: List[int], sig: int, label: str) -> None:
+    if sig == signal.SIGINT:
+        sig_name = "SIGINT"
+    elif sig == signal.SIGTERM:
+        sig_name = "SIGTERM"
+    else:
+        sig_name = "SIGKILL"
+    for pid in pids:
+        try:
+            os.kill(pid, sig)
+            logger.info("Sent %s to %s collector PID %s.", sig_name, label, pid)
+        except ProcessLookupError:
+            pass
+        except PermissionError as exc:
+            logger.warning("Cannot signal %s collector PID %s: %s", label, pid, exc)
+
+
+def _stop_host_sensor_collectors(katsu_ip: str, vindaloo_bmc_ip: str) -> None:
+    """Stop collector scripts on this host only for the target Katsu/BMC pair."""
+    asic_pids = _find_target_collector_pids(
+        ASIC_SENSOR_SCRIPT_MARKER,
+        katsu_ip,
+        vindaloo_bmc_ip,
+        collector_kind="asic",
+    )
+    bmc_pids = _find_target_collector_pids(
+        BMC_SENSOR_SCRIPT_MARKER,
+        katsu_ip,
+        vindaloo_bmc_ip,
+        collector_kind="bmc",
+    )
+    target_pids = sorted(set(asic_pids + bmc_pids))
+
+    if not target_pids:
+        logger.info(
+            "No stale host sensor collectors for Katsu=%s BMC=%s.",
+            katsu_ip,
+            vindaloo_bmc_ip,
+        )
+        return
+
+    logger.info(
+        "Stopping stale host collectors for Katsu=%s BMC=%s: ASIC PIDs=%s, BMC PIDs=%s",
+        katsu_ip,
+        vindaloo_bmc_ip,
+        asic_pids or "none",
+        bmc_pids or "none",
+    )
+    # SIGINT lets custom_sensor_monitor / display_sensors_stv shut down gracefully.
+    _signal_collector_pids(target_pids, signal.SIGINT, "target")
+
+    time.sleep(SENSOR_COLLECTOR_CLEANUP_GRACE_S)
+
+    remaining_asic = _find_target_collector_pids(
+        ASIC_SENSOR_SCRIPT_MARKER,
+        katsu_ip,
+        vindaloo_bmc_ip,
+        collector_kind="asic",
+    )
+    remaining_bmc = _find_target_collector_pids(
+        BMC_SENSOR_SCRIPT_MARKER,
+        katsu_ip,
+        vindaloo_bmc_ip,
+        collector_kind="bmc",
+    )
+    remaining = sorted(set(remaining_asic + remaining_bmc))
+
+    if remaining:
+        logger.warning(
+            "Target collectors still running (PIDs %s); sending SIGKILL.",
+            remaining,
+        )
+        _signal_collector_pids(remaining, signal.SIGKILL, "target")
+
+
+def _wait_for_remote_nexus_snort_idle(katsu_ip: str, max_wait_s: int = 15) -> None:
+    """Wait until no nexus_snort is running on Katsu (after graceful host collector stop)."""
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(
+            hostname=katsu_ip,
+            username=KATSU_CPU_USERNAME,
+            password=KATSU_CPU_PASSWORD,
+            timeout=10,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+
+        deadline = time.time() + max_wait_s
+        while time.time() < deadline:
+            _, stdout, _ = client.exec_command(
+                "pgrep -c nexus_snort 2>/dev/null || echo 0",
+                timeout=10,
+            )
+            count_str = stdout.read().decode(errors="replace").strip().splitlines()[-1].strip()
+            try:
+                count = int(count_str)
+            except ValueError:
+                count = 0
+
+            if count == 0:
+                logger.info("Katsu %s: no nexus_snort processes running.", katsu_ip)
+                client.close()
+                return
+
+            time.sleep(1)
+
+        logger.warning(
+            "Katsu %s: nexus_snort still running after %ss; sending SIGTERM.",
+            katsu_ip,
+            max_wait_s,
+        )
+        client.exec_command(
+            "pkill -TERM nexus_snort 2>/dev/null; sleep 8; "
+            "pkill -KILL nexus_snort 2>/dev/null; true",
+            timeout=30,
+        )
+        client.close()
+    except Exception as exc:
+        logger.warning("Remote nexus_snort idle wait failed (may be harmless): %s", exc)
+
+
+def ensure_sensor_collectors_stopped(katsu_ip: str, vindaloo_bmc_ip: str) -> None:
+    """
+    Kill orphaned sensor collectors for this Katsu/BMC pair before a new collection.
+
+    Other racks on the shared host are left untouched.
+    """
+    logger.info("=" * 70)
+    logger.info(
+        "PRE-CHECK: stop stale sensor collectors for Katsu=%s BMC=%s",
+        katsu_ip,
+        vindaloo_bmc_ip,
+    )
+    logger.info("=" * 70)
+
+    _stop_host_sensor_collectors(katsu_ip, vindaloo_bmc_ip)
+    _wait_for_remote_nexus_snort_idle(katsu_ip)
+    logger.info(
+        "Waiting %ss for Katsu nexus_snort/driver settle before new collection...",
+        NEXUS_SNORT_POST_CLEANUP_SETTLE_S,
+    )
+    time.sleep(NEXUS_SNORT_POST_CLEANUP_SETTLE_S)
+
+
+def start_asic_sensor_monitor(
+    katsu_ip: str,
+    vindaloo_bmc_ip: str,
+    sensor_data_root: str,
+    run_timestamp: str,
+    duration_s: Optional[int],
+    test_name: str,
+    suite_run_log_dir: str,
+) -> Optional[subprocess.Popen]:
+    if not os.path.isfile(CUSTOM_SENSOR_MONITOR_SCRIPT):
+        logger.error(
+            "ASIC sensor monitor script not found: %s",
+            CUSTOM_SENSOR_MONITOR_SCRIPT,
+        )
+        return None
+
+    cmd = [
+        sys.executable,
+        CUSTOM_SENSOR_MONITOR_SCRIPT,
+        "--katsu-host",
+        katsu_ip,
+        "--device-ip",
+        vindaloo_bmc_ip,
+        "--local-root",
+        sensor_data_root,
+        "--timestamp",
+        run_timestamp,
+        "--password",
+        KATSU_CPU_PASSWORD,
+        "--bmc-user",
+        BMC_USERNAME,
+        "--bmc-password",
+        BMC_PASSWORD,
+        "--test-name",
+        test_name,
+    ]
+    if duration_s is not None:
+        cmd.extend(["--duration", str(duration_s)])
+
+    asic_log_path = os.path.join(suite_run_log_dir, "asic_sensor_collector.log")
+
+    if duration_s is not None:
+        logger.info("Starting parallel ASIC sensor collection (max %ss)...", duration_s)
+    else:
+        logger.info("Starting parallel ASIC sensor collection (until STV suite ends)...")
+    logger.info("ASIC data root: %s/results_custom_sensors/", sensor_data_root)
+    logger.info("> [SENSOR CMD]: %s", " ".join(shlex.quote(part) for part in cmd))
+    logger.info("ASIC wrapper log: %s", asic_log_path)
+
+    log_handle = open(asic_log_path, "a", encoding="utf-8")
+    proc = subprocess.Popen(
+        cmd,
+        cwd=SCRIPT_DIR,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    log_handle.close()
+    return proc
+
+
+def start_bmc_sensor_monitor(
+    vindaloo_bmc_ip: str,
+    sensor_data_root: str,
+    max_runtime_s: Optional[int],
+    run_timestamp: str,
+    suite_run_log_dir: str,
+) -> Optional[subprocess.Popen]:
+    if not os.path.isfile(DISPLAY_SENSORS_STV_SCRIPT):
+        logger.error(
+            "BMC sensor monitor script not found: %s",
+            DISPLAY_SENSORS_STV_SCRIPT,
+        )
+        return None
+
+    bmc_results_parent = os.path.join(sensor_data_root, "results_sensors")
+
+    cmd = [
+        sys.executable,
+        DISPLAY_SENSORS_STV_SCRIPT,
+        "--ip",
+        vindaloo_bmc_ip,
+        "--user",
+        BMC_USERNAME,
+        "--password",
+        BMC_PASSWORD,
+        "--output-dir",
+        bmc_results_parent,
+        "--timestamp",
+        run_timestamp,
+    ]
+    if max_runtime_s is not None:
+        cmd.extend(["--max-runtime-sec", str(max_runtime_s)])
+    else:
+        cmd.extend(["--loop-count", "0"])
+
+    bmc_log_path = os.path.join(suite_run_log_dir, "bmc_sensor_collector.log")
+
+    if max_runtime_s is not None:
+        logger.info("Starting parallel BMC Redfish sensor polling (max %ss)...", max_runtime_s)
+    else:
+        logger.info("Starting parallel BMC Redfish sensor polling (until STV suite ends)...")
+    logger.info("BMC data root: %s/results_sensors/", sensor_data_root)
+    logger.info("> [BMC SENSOR CMD]: %s", " ".join(shlex.quote(part) for part in cmd))
+    logger.info("BMC wrapper log: %s", bmc_log_path)
+
+    log_handle = open(bmc_log_path, "a", encoding="utf-8")
+    proc = subprocess.Popen(
+        cmd,
+        cwd=SCRIPT_DIR,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    log_handle.close()
+    return proc
+
+
+def _relay_collector_output(proc: subprocess.Popen, log_prefix: str) -> None:
+    if proc.stdout is None:
+        return
+    for line in proc.stdout:
+        line = line.rstrip("\n")
+        if line:
+            logger.info("[%s] %s", log_prefix, line)
+
+
+def wait_for_collector_process(
+    proc: Optional[subprocess.Popen],
+    log_prefix: str,
+    stop_if_running: bool = True,
+    use_sigint: bool = True,
+) -> bool:
+    if proc is None:
+        return True
+
+    if proc.poll() is None and stop_if_running:
+        logger.info("Waiting for %s collector to finish...", log_prefix)
+        try:
+            if use_sigint:
+                proc.send_signal(signal.SIGINT)
+            else:
+                proc.terminate()
+        except ProcessLookupError:
+            pass
+
+    try:
+        remaining_output, _ = proc.communicate(timeout=PARALLEL_COLLECTOR_STOP_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        logger.warning("%s collector did not exit in time; killing.", log_prefix)
+        proc.kill()
+        remaining_output, _ = proc.communicate(timeout=30)
+    else:
+        remaining_output = remaining_output or ""
+
+    if remaining_output.strip():
+        for line in remaining_output.splitlines():
+            logger.info("[%s] %s", log_prefix, line)
+
+    rc = proc.returncode
+    if rc == 0:
+        logger.info("%s collection finished successfully.", log_prefix)
+        return True
+
+    logger.warning("%s collection exited with rc=%s", log_prefix, rc)
+    return False
+
+
+def wait_for_asic_sensor_monitor(
+    proc: Optional[subprocess.Popen],
+    stop_if_running: bool = True,
+) -> bool:
+    return wait_for_collector_process(
+        proc,
+        "asic-sensor",
+        stop_if_running=stop_if_running,
+        use_sigint=True,
+    )
+
+
+def wait_for_bmc_sensor_monitor(
+    proc: Optional[subprocess.Popen],
+    stop_if_running: bool = True,
+) -> bool:
+    return wait_for_collector_process(
+        proc,
+        "bmc-sensor",
+        stop_if_running=stop_if_running,
+        use_sigint=True,
+    )
+
+
+def finalize_sensor_collectors(
+    summary: ExecutionSummary,
+    asic_sensor_proc: Optional[subprocess.Popen],
+    bmc_sensor_proc: Optional[subprocess.Popen],
+    *,
+    suite_elapsed_s: float,
+) -> None:
+    """
+    Stop collectors after STV completes and wait for CSV/SQLite export.
+
+    Collection window tracks actual suite runtime (not a fixed guess).
+    """
+    logger.info(
+        "Finalizing sensor collectors (STV ran %.1f min)...",
+        suite_elapsed_s / 60.0,
+    )
+
+    if asic_sensor_proc is not None:
+        if asic_sensor_proc.poll() is None:
+            asic_ok = wait_for_asic_sensor_monitor(asic_sensor_proc, stop_if_running=True)
+        else:
+            asic_ok = asic_sensor_proc.returncode == 0
+            logger.info(
+                "ASIC collector already exited rc=%s",
+                asic_sensor_proc.returncode,
+            )
+        summary.record_test("Parallel ASIC Sensor Collection (data ready)", asic_ok)
+    else:
+        logger.info("No ASIC collector to finalize.")
+
+    if bmc_sensor_proc is not None:
+        if bmc_sensor_proc.poll() is None:
+            bmc_ok = wait_for_bmc_sensor_monitor(bmc_sensor_proc, stop_if_running=True)
+        else:
+            bmc_ok = bmc_sensor_proc.returncode == 0
+            logger.info(
+                "BMC collector already exited rc=%s",
+                bmc_sensor_proc.returncode,
+            )
+        summary.record_test("Parallel BMC Sensor Collection (data ready)", bmc_ok)
+    else:
+        logger.info("No BMC collector to finalize.")
+
+
+# --- VINDALOO BMC SSH ADAPTER ---
+class SSHAdapter:
+    def __init__(self, ip: str):
+        self.ip = ip
+        self.client = paramiko.SSHClient()
+        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    def connect(self) -> None:
+        transport = self.client.get_transport()
+        if transport and transport.is_active():
+            return
+
+        logger.info(f"Connecting via SSH to Vindaloo BMC {self.ip} as {BMC_USERNAME}...")
+
+        self.client.connect(
+            hostname=self.ip,
+            username=BMC_USERNAME,
+            password=BMC_PASSWORD,
+            timeout=10,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+
+    def run_command(
+        self,
+        cmd: str,
+        timeout: int = 180,
+        warn_only: bool = False,
+        quiet: bool = False,
+    ) -> str:
+        if not quiet:
+            logger.info(f"> [VINDALOO SSH CMD]: {cmd}")
+
+        stdin, stdout, stderr = self.client.exec_command(cmd, timeout=timeout)
+
+        out = stdout.read().decode("utf-8", errors="replace").strip()
+        err = stderr.read().decode("utf-8", errors="replace").strip()
+        exit_status = stdout.channel.recv_exit_status()
+
+        combined = f"{out}\n{err}".strip()
+
+        if exit_status != 0 and not warn_only:
+            raise RuntimeError(
+                f"Command execution failed with code {exit_status}.\n"
+                f"Command: {cmd}\n"
+                f"Output: {out}\n"
+                f"Error: {err}"
+            )
+
+        return combined
+
+    def disconnect(self) -> None:
+        try:
+            transport = self.client.get_transport()
+            if transport and transport.is_active():
+                self.client.close()
+                logger.info(f"Disconnected from Vindaloo BMC {self.ip}")
+        except Exception:
+            pass
+
+
+# --- VINDALOO BLACKBOX / MAX31732 DIAGNOSTICS ---
+class HardwareDiagnostics:
+    def __init__(self, ssh_adapter: SSHAdapter):
+        self.ssh = ssh_adapter
+
+    def read_ucd_blackbox(self) -> str:
+        log_test_case_start("Read Vindaloo UCD Blackbox Logs")
+
+        awk_filter = (
+            r"""awk '/^UCD90320 Black Box Utility/ || /^Caution:/ || /^Stopping psusensor/ || """
+            r"""/^\+\+\+\+\+Raw Bytes/ || /^[0-9A-F ]+$/ || /^\+\+\+\+\+Fault Info/ || """
+            r"""/^Timestamp/ || /^Raw Uptime/ || /^Fault ID/ || /^Fault Value \(conv\)/ || """
+            r"""/^Rail Name/ || /^Fault Value \(raw\)/ || /^\+\+\+\+\+GPI Statuses/{gpi=1;gpo=0;print;next} """
+            r"""/^\+\+\+\+\+GPO Statuses/{gpi=0;gpo=1;print;next} """
+            r"""/^\+\+\+\+\+/{if(gpi||gpo) next} """
+            r"""gpi&&/^GPI0[1-6]:/ || gpo&&/^GPO0[1-6]:/'"""
+        )
+
+        buses = " ".join(str(b) for b in UCD_READ_BUSES)
+
+        cmd = (
+            f"for b in {buses}; do "
+            "echo \"================ BUS $b ================\"; "
+            f"ucd90320-blackbox -b $b -s 0x33 -c blackbox_info | {awk_filter}; "
+            "done"
+        )
+
+        try:
+            output = self.ssh.run_command(cmd, warn_only=True)
+            logger.info(f"--- UCD Blackbox Decoded Data ---\n{output.strip()}\n{'-' * 40}")
+            return output.strip()
+        except Exception as e:
+            logger.error(f"Failed to read UCD Blackbox: {e}")
+            return ""
+
+    def clear_ucd_blackbox(self) -> bool:
+        log_test_case_start("Clear Vindaloo UCD Blackbox Logs")
+
+        buses = " ".join(str(b) for b in UCD_CLEAR_BUSES)
+
+        cmd = (
+            f"for b in {buses}; do "
+            "echo \"Clearing BUS $b\"; "
+            "ucd90320-blackbox -b $b -s 0x33 -c blackbox_clear; "
+            "done"
+        )
+
+        try:
+            output = self.ssh.run_command(cmd, warn_only=True)
+            logger.info(f"--- UCD Blackbox Clear Output ---\n{output.strip()}\n{'-' * 40}")
+
+            output_lower = output.lower()
+            if "error" in output_lower or "fail" in output_lower:
+                logger.error("Error signature detected while clearing UCD blackbox.")
+                return False
+
+            logger.info(f"Successfully cleared UCD90320 Blackbox logs on buses: {UCD_CLEAR_BUSES}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear UCD Blackbox: {e}")
+            return False
+
+    def blackbox_has_thermal_assertion(self, blackbox_output: str) -> bool:
+        if not blackbox_output:
+            return False
+
+        output_lower = blackbox_output.lower()
+
+        keyword_hit = any(
+            keyword.lower() in output_lower
+            for keyword in THERMAL_FAULT_KEYWORDS
+        )
+
+        asserted_hit = any(
+            word in output_lower
+            for word in ["assert", "asserted", "active", "fault"]
+        )
+
+        return keyword_hit and asserted_hit
+
+    def dump_max31732_thermal_debug(self) -> bool:
+        log_test_case_start("MAX31732 Thermal Debug Dump")
+
+        script = r"""
+ADDR=0x1c
+BUSES=(6 7 9 10 11 12 13 15)
+
+declare -A HWMON=(
+[11]=7
+[12]=8
+[13]=9
+[15]=10
+[6]=11
+[7]=12
+[9]=13
+[10]=14
+)
+
+decode_bits() {
+    local val=$1
+    (( val & 0x01 )) && echo "    Local"
+    (( val & 0x02 )) && echo "    Remote1"
+    (( val & 0x04 )) && echo "    Remote2"
+    (( val & 0x08 )) && echo "    Remote3"
+    (( val & 0x10 )) && echo "    Remote4"
+}
+
+echo
+echo "read MAX31732 MASK"
+for b in "${BUSES[@]}"; do
+    echo -n "channel bus=$b addr=$ADDR mask_0x1b="
+    i2ctransfer -y -f "$b" w1@"$ADDR" 0x1b r1
+    echo -n "channel bus=$b addr=$ADDR mask_0x1c="
+    i2ctransfer -y -f "$b" w1@"$ADDR" 0x1c r1
+done
+
+echo
+echo "read MAX31732 ALARM threshold"
+printf "%-8s %-8s %-18s %-32s %-32s %-32s %-28s\n" \
+"bus" "hwmon" \
+"Local_sensor_max" \
+"Remote1_TSNS_LX_max" \
+"Remote2_XIO_ENE_max" \
+"Remote3_XIO_WSW_max" \
+"Remote4_PCBthermalDiode_max"
+
+for b in "${BUSES[@]}"; do
+    hwmon="${HWMON[$b]}"
+    base="/sys/bus/i2c/drivers/max31732-driver/${b}-001c/hwmon/hwmon${hwmon}"
+    printf "%-8s %-8s" "$b" "hwmon$hwmon"
+
+    for i in {1..5}; do
+        printf " %-32s" "$(cat "$base/temp${i}_max" 2>/dev/null || echo N/A)"
+    done
+
+    echo
+done
+
+echo
+echo "read MAX31732 sensors"
+printf "%-8s %-8s %-18s %-32s %-32s %-32s %-28s\n" \
+"bus" "hwmon" \
+"Local_sensor" \
+"Remote1_TSNS_LX_SNSR_THERMAL" \
+"Remote2_TSNS_XIO_CORE_VTMON_ENE" \
+"Remote3_TSNS_XIO_CORE_VTMON_WSW" \
+"Remote4_PCBthermalDiode"
+
+for b in "${BUSES[@]}"; do
+    hwmon="${HWMON[$b]}"
+    base="/sys/bus/i2c/drivers/max31732-driver/${b}-001c/hwmon/hwmon${hwmon}"
+    printf "%-8s %-8s" "$b" "hwmon$hwmon"
+
+    for i in {1..5}; do
+        printf " %-32s" "$(cat "$base/temp${i}_input" 2>/dev/null || echo N/A)"
+    done
+
+    echo
+done
+
+echo
+echo "MAX31732 dump"
+for bus in "${BUSES[@]}"; do
+    echo "=============================="
+    echo "I2C BUS $bus"
+    echo "=============================="
+
+    if ! i2cget -y -f "$bus" "$ADDR" 0x00 >/dev/null 2>&1; then
+        echo "[WARN] No response at $ADDR"
+        echo
+        continue
+    fi
+
+    status_hex=$(i2cget -y -f "$bus" "$ADDR" 0x0c)
+    mask_hex=$(i2cget -y -f "$bus" "$ADDR" 0x1b)
+    diode_hex=$(i2cget -y -f "$bus" "$ADDR" 0x44)
+    log_hex=$(i2cget -y -f "$bus" "$ADDR" 0x8c)
+
+    status=$((status_hex))
+    mask=$((mask_hex))
+    diode=$((diode_hex))
+    log=$((log_hex))
+
+    channel_bits=0x1f
+    effective=$(( status & channel_bits & (~mask & channel_bits) ))
+
+    printf "status_0x0c=%s mask_0x1b=%s effective_unmasked=0x%02x diode_0x44=%s log_0x8c=%s\n" \
+    "$status_hex" "$mask_hex" "$effective" "$diode_hex" "$log_hex"
+
+    if (( effective == 0 )); then
+        echo "  No unmasked active ALARM1 channel"
+    else
+        echo "  Unmasked active ALARM1 channel(s):"
+        decode_bits "$effective"
+    fi
+
+    masked_active=$(( status & channel_bits & mask ))
+    if (( masked_active != 0 )); then
+        echo "  Masked active channel(s), should NOT assert ALARM output:"
+        decode_bits "$masked_active"
+    fi
+
+    if (( diode != 0 )); then
+        echo "  Diode fault status:"
+        (( diode & 0x01 )) && echo "    Remote1 diode fault"
+        (( diode & 0x02 )) && echo "    Remote2 diode fault"
+        (( diode & 0x04 )) && echo "    Remote3 diode fault"
+        (( diode & 0x08 )) && echo "    Remote4 diode fault"
+    fi
+
+    echo
+done
+"""
+
+        try:
+            output = self.ssh.run_command(
+                f"bash -lc {shlex.quote(script)}",
+                timeout=120,
+                warn_only=True,
+                quiet=True,
+            )
+
+            logger.info(f"--- MAX31732 Thermal Debug Output ---\n{output}\n{'-' * 40}")
+
+            if not output.strip():
+                logger.warning("MAX31732 debug dump returned empty output.")
+                return False
+
+            return True
+        except Exception as e:
+            logger.error(f"Failed to dump MAX31732 thermal debug data: {e}")
+            return False
+
+    def dump_max31732_if_blackbox_asserted(self, blackbox_output: str) -> bool:
+        if not self.blackbox_has_thermal_assertion(blackbox_output):
+            logger.info("No thermal GPI fault assertion detected in UCD blackbox.")
+            return True
+
+        logger.error("THERMAL FAULT ASSERTION detected in UCD blackbox. Dumping MAX31732 debug data...")
+        return self.dump_max31732_thermal_debug()
+
+
+# --- YAML CHIP LIST UPDATER ---
+def update_chip_list(chip_ids: List[int], config_path: str) -> bool:
+    """
+    Set chip_list in this run's config file.
+
+    unidiag reads chip_list from the per-run config_tX.yaml, so each setup keeps
+    its own value. Combined with the per-config lock (one operator per config),
+    this is safe for concurrent multi-setup runs on the same host.
+    """
+    if not os.path.exists(config_path):
+        logger.error(f"Config file not found at: {config_path}")
+        return False
+
+    try:
+        with open(config_path, "r") as f:
+            lines = f.readlines()
+
+        chips_str = ", ".join(str(c) for c in chip_ids)
+        replaced = False
+        new_lines = []
+
+        for line in lines:
+            stripped = line.lstrip()
+            if stripped.startswith("chip_list:"):
+                indent = line[: len(line) - len(stripped)]
+                new_line = f'{indent}chip_list: [{chips_str}]  #List of Chip IDs to be test\n'
+                new_lines.append(new_line)
+                replaced = True
+                logger.info(f"Updated chip_list in {os.path.basename(config_path)} -> [{chips_str}]")
+            else:
+                new_lines.append(line)
+
+        if not replaced:
+            logger.error(
+                "chip_list field not found in %s; no changes made.", config_path
+            )
+            return False
+
+        with open(config_path, "w") as f:
+            f.writelines(new_lines)
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update chip_list in {config_path}: {e}")
+        return False
+
+
+# --- KATSU SILICON REVISION (EVT/DVT) DETECTION ---
+def parse_switch_revision(output: str) -> Optional[str]:
+    """Extract the PCIe switch RevId (e.g. A0/B0) from switchclid list output."""
+    revs = set()
+    for line in output.splitlines():
+        m = re.search(r"PEX\S*\s+([A-Za-z]\d)\b", line)
+        if m:
+            revs.add(m.group(1).upper())
+
+    if len(revs) == 1:
+        return next(iter(revs))
+    if len(revs) > 1:
+        logger.warning("Mixed switch revisions reported by switchclid: %s", sorted(revs))
+    return None
+
+
+def detect_katsu_revision(katsu_ip: str) -> Optional[str]:
+    """SSH to the Katsu and read the PCIe switch RevId. Returns 'A0'/'B0' or None."""
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=katsu_ip,
+            username=KATSU_CPU_USERNAME,
+            password=KATSU_CPU_PASSWORD,
+            timeout=15,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        _, stdout, stderr = client.exec_command(
+            f"bash -lc {shlex.quote(SWITCHCLID_LIST_CMD)}", timeout=30
+        )
+        out = stdout.read().decode(errors="replace")
+        err = stderr.read().decode(errors="replace")
+
+        if not out.strip():
+            logger.error(
+                "switchclid produced no output (stderr: %s)", err.strip() or "(none)"
+            )
+            return None
+
+        logger.info("switchclid revision output:\n%s", out.strip())
+        return parse_switch_revision(out)
+    except Exception as e:
+        logger.error("Failed to query Katsu revision via switchclid: %s", e)
+        return None
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+
+def enforce_katsu_revision(katsu_ip: str, expected_rev: str) -> None:
+    """
+    Abort (raise RuntimeError) if the Katsu's silicon revision doesn't match the
+    expected build phase. Also aborts if the revision can't be determined.
+    """
+    expected_rev = expected_rev.upper()
+    expected_phase = KATSU_REV_TO_PHASE.get(expected_rev, expected_rev)
+
+    logger.info(
+        "Verifying Katsu %s build phase (expecting %s = %s)...",
+        katsu_ip,
+        expected_rev,
+        expected_phase,
+    )
+
+    actual_rev = detect_katsu_revision(katsu_ip)
+    if actual_rev is None:
+        raise RuntimeError(
+            f"Could not determine Katsu {katsu_ip} silicon revision via switchclid. "
+            "Re-run with --skip-rev-check to bypass if you are certain of the unit."
+        )
+
+    actual_phase = KATSU_REV_TO_PHASE.get(actual_rev, "UNKNOWN")
+    if actual_rev != expected_rev:
+        raise RuntimeError(
+            f"BUILD-PHASE MISMATCH: this script targets {expected_phase} ({expected_rev}), "
+            f"but Katsu {katsu_ip} reports {actual_phase} ({actual_rev}). Aborting."
+        )
+
+    logger.info("Build-phase check OK: Katsu %s is %s (%s).", katsu_ip, actual_rev, actual_phase)
+
+
+def log_katsu_tool_versions(katsu_ip: str) -> Dict[str, str]:
+    """
+    Query and log `--version` for each Katsu tool that supports it.
+
+    Runs every probe in a single SSH session. A tool is reported with its version
+    only when `--version` exits 0 with output; tools that don't implement it
+    (e.g. hotpackets, smoke_nexus) are reported as "version not available".
+    Best-effort: never raises, so a probe failure can't block the suite.
+    """
+    tools_arg = " ".join(shlex.quote(t) for t in KATSU_VERSION_TOOLS)
+    probe = (
+        f"for t in {tools_arg}; do "
+        f'out=$("$t" --version 2>&1); rc=$?; '
+        f'first=$(printf "%s\\n" "$out" | head -n 1); '
+        f'printf "%s\\t%s\\t%s\\n" "$t" "$rc" "$first"; '
+        f"done"
+    )
+
+    versions: Dict[str, str] = {}
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=katsu_ip,
+            username=KATSU_CPU_USERNAME,
+            password=KATSU_CPU_PASSWORD,
+            timeout=15,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        _, stdout, _ = client.exec_command(f"bash -lc {shlex.quote(probe)}", timeout=60)
+        out = stdout.read().decode(errors="replace")
+    except Exception as e:
+        logger.warning("Could not collect Katsu tool versions from %s: %s", katsu_ip, e)
+        return versions
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        tool, rc_str, first = parts[0], parts[1].strip(), parts[2].strip()
+        versions[tool] = first if (rc_str == "0" and first) else "version not available"
+
+    logger.info("=" * 70)
+    logger.info("KATSU TOOL VERSIONS (%s)", katsu_ip)
+    logger.info("=" * 70)
+    width = max((len(t) for t in KATSU_VERSION_TOOLS), default=0)
+    for tool in KATSU_VERSION_TOOLS:
+        logger.info("  %-*s : %s", width, tool, versions.get(tool, "not probed"))
+    logger.info("=" * 70)
+    return versions
+
+
+def log_katsu_bios_info(katsu_ip: str) -> Dict[str, str]:
+    """
+    Log the Katsu's BIOS information from `dmidecode -t bios`.
+
+    Reports Vendor, Version (the exact BIOS build, e.g. KAT.1.05.01_PFR), Release
+    Date, and BIOS Revision. Best-effort: never raises, so a probe failure can't
+    block the suite.
+    """
+    fields = {
+        "Vendor:": "vendor",
+        "Version:": "version",
+        "Release Date:": "release_date",
+        "BIOS Revision:": "bios_revision",
+    }
+
+    info: Dict[str, str] = {}
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=katsu_ip,
+            username=KATSU_CPU_USERNAME,
+            password=KATSU_CPU_PASSWORD,
+            timeout=15,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        _, stdout, _ = client.exec_command(
+            f"bash -lc {shlex.quote('dmidecode -t bios')}", timeout=30
+        )
+        out = stdout.read().decode(errors="replace")
+    except Exception as e:
+        logger.warning("Could not collect Katsu BIOS info from %s: %s", katsu_ip, e)
+        return info
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    for line in out.splitlines():
+        stripped = line.strip()
+        for prefix, key in fields.items():
+            if stripped.startswith(prefix) and key not in info:
+                info[key] = stripped[len(prefix):].strip()
+                break
+
+    logger.info("=" * 70)
+    logger.info("KATSU BIOS (%s)", katsu_ip)
+    logger.info("=" * 70)
+    logger.info("  Vendor        : %s", info.get("vendor", "unknown"))
+    logger.info("  Version       : %s", info.get("version", "unknown"))
+    logger.info("  Release Date  : %s", info.get("release_date", "unknown"))
+    logger.info("  BIOS Revision : %s", info.get("bios_revision", "unknown"))
+    logger.info("=" * 70)
+    return info
+
+
+def _read_smoke_expected_counts():
+    default_passed, default_failed = 22, 0
+    try:
+        with open(STV_YAML_PATH, "r") as f:
+            content = f.read()
+
+        m = re.search(r"^smoke_test:\s*\n((?:[ \t]+.*\n)+)", content, re.MULTILINE)
+        if not m:
+            return default_passed, default_failed
+
+        block = m.group(1)
+        passed_m = re.search(r"expected_passed_count:\s*(\d+)", block)
+        failed_m = re.search(r"expected_failed_count:\s*(\d+)", block)
+
+        return (
+            int(passed_m.group(1)) if passed_m else default_passed,
+            int(failed_m.group(1)) if failed_m else default_failed,
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not read expected counts from {STV_YAML_PATH}: {e}; "
+            f"using defaults ({default_passed} passed / {default_failed} failed)."
+        )
+        return default_passed, default_failed
+
+
+def _parse_config_scalar(stripped_line: str) -> str:
+    _, _, value = stripped_line.partition(":")
+    return value.strip().strip('"').strip("'")
+
+
+def read_ssh_ips_from_config(config_path: str) -> Tuple[Optional[str], Optional[str]]:
+    """Read CPU_ssh and BMC_ssh Ip_address values from config_t2.yaml."""
+    if not os.path.exists(config_path):
+        return None, None
+
+    cpu_ip: Optional[str] = None
+    bmc_ip: Optional[str] = None
+    active_section: Optional[str] = None
+    section_indent: Optional[int] = None
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.lstrip()
+                current_indent = len(line) - len(stripped)
+
+                if stripped.startswith("CPU_ssh:"):
+                    active_section = "cpu"
+                    section_indent = current_indent
+                    continue
+
+                if stripped.startswith("BMC_ssh:"):
+                    active_section = "bmc"
+                    section_indent = current_indent
+                    continue
+
+                if active_section and section_indent is not None:
+                    if (
+                        stripped
+                        and not stripped.startswith("#")
+                        and ":" in stripped
+                        and current_indent <= section_indent
+                    ):
+                        active_section = None
+                        section_indent = None
+
+                if active_section and stripped.split(":", 1)[0].strip() == "Ip_address":
+                    ip_value = _parse_config_scalar(stripped)
+                    if ip_value:
+                        if active_section == "cpu":
+                            cpu_ip = ip_value
+                        elif active_section == "bmc":
+                            bmc_ip = ip_value
+
+        return cpu_ip, bmc_ip
+    except Exception as e:
+        logger.warning("Could not read IPs from %s: %s", config_path, e)
+        return None, None
+
+
+def resolve_target_ips(
+    config_path: str,
+    cli_cpu_ip: Optional[str],
+    cli_bmc_ip: Optional[str],
+) -> Tuple[str, str]:
+    """
+    Resolve Katsu CPU and Vindaloo BMC IPs.
+
+    CLI values win when provided; otherwise values are loaded from config_t2.yaml.
+    """
+    file_cpu_ip, file_bmc_ip = read_ssh_ips_from_config(config_path)
+
+    cpu_ip = (cli_cpu_ip or "").strip() or (file_cpu_ip or "").strip()
+    bmc_ip = (cli_bmc_ip or "").strip() or (file_bmc_ip or "").strip()
+
+    if not cpu_ip:
+        raise ValueError(
+            "Katsu CPU IP is missing. Pass --katsu-cpu-ip or set setting.CPU_ssh.Ip_address "
+            f"in {config_path}"
+        )
+
+    if not bmc_ip:
+        raise ValueError(
+            "Vindaloo BMC IP is missing. Pass --vindaloo-bmc-ip or set setting.BMC_ssh.Ip_address "
+            f"in {config_path}"
+        )
+
+    if cli_cpu_ip:
+        logger.info("Katsu CPU IP from CLI: %s", cpu_ip)
+    else:
+        logger.info("Katsu CPU IP from config_t2.yaml: %s", cpu_ip)
+
+    if cli_bmc_ip:
+        logger.info("Vindaloo BMC IP from CLI: %s", bmc_ip)
+    else:
+        logger.info("Vindaloo BMC IP from config_t2.yaml: %s", bmc_ip)
+
+    return cpu_ip, bmc_ip
+
+
+# --- LOCAL ORCHESTRATOR ---
+class LocalUnidiagRunner:
+    def _sync_ssh_section(
+        self,
+        lines: List[str],
+        section_name: str,
+        ip_value: str,
+        username: str,
+        password: str,
+    ) -> List[str]:
+        new_lines: List[str] = []
+        inside_section = False
+        section_indent: Optional[int] = None
+
+        for line in lines:
+            stripped = line.lstrip()
+            current_indent = len(line) - len(stripped)
+
+            if stripped.startswith(f"{section_name}:"):
+                inside_section = True
+                section_indent = current_indent
+                new_lines.append(line)
+                continue
+
+            if inside_section and section_indent is not None:
+                if (
+                    stripped
+                    and not stripped.startswith("#")
+                    and ":" in stripped
+                    and current_indent <= section_indent
+                ):
+                    inside_section = False
+                    section_indent = None
+
+            if inside_section:
+                key = stripped.split(":", 1)[0].strip()
+                indent = line[:current_indent]
+
+                if key == "Ip_address":
+                    new_lines.append(f'{indent}Ip_address: "{ip_value}"\n')
+                    continue
+
+                if key == "Username":
+                    new_lines.append(f'{indent}Username: "{username}"\n')
+                    continue
+
+                if key == "Password":
+                    new_lines.append(f'{indent}Password: "{password}"\n')
+                    continue
+
+            new_lines.append(line)
+
+        return new_lines
+
+    def sync_config_targets(self, cpu_ip: str, bmc_ip: str, config_path: str = CONFIG_PATH) -> bool:
+        """Write resolved targets into config_t2.yaml CPU_ssh and BMC_ssh sections."""
+        if not os.path.exists(config_path):
+            logger.error("Config file not found at: %s", config_path)
+            return False
+
+        logger.info("Synchronizing %s before unidiag STV run...", config_path)
+        logger.info("  CPU_ssh -> %s (%s)", cpu_ip, KATSU_CPU_USERNAME)
+        logger.info("  BMC_ssh -> %s (%s)", bmc_ip, BMC_USERNAME)
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            lines = self._sync_ssh_section(
+                lines,
+                "CPU_ssh",
+                cpu_ip,
+                KATSU_CPU_USERNAME,
+                KATSU_CPU_PASSWORD,
+            )
+            lines = self._sync_ssh_section(
+                lines,
+                "BMC_ssh",
+                bmc_ip,
+                BMC_USERNAME,
+                BMC_PASSWORD,
+            )
+
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+
+            logger.info("config_t2.yaml SSH targets synchronized (no manual edit needed per run).")
+            return True
+        except Exception as e:
+            logger.error("Failed to update %s: %s", config_path, e)
+            return False
+
+    def update_config_ip(self, cpu_ip: str) -> bool:
+        """Backward-compatible wrapper; sync CPU only (prefer sync_config_targets)."""
+        file_cpu_ip, file_bmc_ip = read_ssh_ips_from_config(CONFIG_PATH)
+        bmc_ip = (file_bmc_ip or "").strip()
+        if not bmc_ip:
+            logger.warning(
+                "BMC_ssh Ip_address is empty in config_t2.yaml; "
+                "pass --vindaloo-bmc-ip or set BMC_ssh.Ip_address."
+            )
+            return False
+        return self.sync_config_targets(cpu_ip, bmc_ip)
+
+    def run_command(self, cmd: str) -> str:
+        katsu_lib_path = os.path.join(WORKSPACE_DIR, "pylib")
+        full_cmd = f"export PYTHONPATH=$PYTHONPATH:{katsu_lib_path} && {cmd}"
+
+        logger.info(f"> [LOCAL CMD]: {full_cmd}")
+        try:
+            result = subprocess.run(
+                full_cmd,
+                shell=True,
+                cwd=WORKSPACE_DIR,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                executable="/bin/bash"
+            )
+            return result.stdout.strip()
+        except Exception as e:
+            logger.error(f"Failed to run subprocess for STV command: {e}")
+            return f"ERROR: {e}"
+
+
+# --- PARALLEL SMOKE TEST ---
+def _run_smoke_one_chip(
+    chip_id: int,
+    katsu_ip: str,
+    expected_passed: int,
+    expected_failed: int,
+):
+    cmd = SMOKE_NEXUS_CMD_TEMPLATE.format(chip_id=chip_id)
+    logger.info(f"[smoke chip {chip_id}] start")
+
+    start = time.monotonic()
+    exit_status = -1
+    output_buf: List[str] = []
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    try:
+        client.connect(
+            hostname=katsu_ip,
+            username=KATSU_CPU_USERNAME,
+            password=KATSU_CPU_PASSWORD,
+            timeout=SMOKE_TEST_SSH_TIMEOUT_S,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+
+        transport = client.get_transport()
+        if transport is not None:
+            transport.set_keepalive(30)
+
+        stdin, stdout, stderr = client.exec_command(
+            cmd,
+            timeout=SMOKE_TEST_CHIP_TIMEOUT_S,
+            get_pty=False,
+        )
+        stdout.channel.set_combine_stderr(True)
+
+        for line in iter(stdout.readline, ""):
+            output_buf.append(line)
+
+        exit_status = stdout.channel.recv_exit_status()
+
+    except Exception as e:
+        logger.error(f"[smoke chip {chip_id}] SSH/exec failure: {e}")
+        output_buf.append(f"\n[wrapper-error] {e}\n")
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    elapsed = time.monotonic() - start
+    full_output = "".join(output_buf)
+    summary_match = SMOKE_RESULT_RE.search(full_output)
+
+    if summary_match:
+        status_str = summary_match.group("status")
+        actual_passed = int(summary_match.group("passed"))
+        actual_failed = int(summary_match.group("failed"))
+
+        contract_ok = (
+            status_str == "ok"
+            and actual_passed >= expected_passed
+            and actual_failed == expected_failed
+        )
+
+        if contract_ok and actual_passed != expected_passed:
+            output_buf.append(
+                f"\n[wrapper-note] smoke_nexus reported {actual_passed} passed but "
+                f"stv.yaml expects {expected_passed}. Accepting under '>=' rule. "
+                f"Consider syncing expected_passed_count in {STV_YAML_PATH}.\n"
+            )
+            full_output = "".join(output_buf)
+
+        summary_seen = True
+    else:
+        status_str = "missing"
+        actual_passed = -1
+        actual_failed = -1
+        contract_ok = False
+        summary_seen = False
+
+    passed = (exit_status == 0) and contract_ok
+
+    detail = {
+        "chip_id": chip_id,
+        "passed": passed,
+        "exit_status": exit_status,
+        "summary_seen": summary_seen,
+        "status_str": status_str,
+        "actual_passed": actual_passed,
+        "actual_failed": actual_failed,
+        "elapsed_s": elapsed,
+        "output": full_output,
+    }
+
+    icon = "PASS" if passed else "FAIL"
+    logger.info(
+        f"[smoke chip {chip_id}] finished {icon} "
+        f"rc={exit_status} summary={status_str} "
+        f"{actual_passed}P/{actual_failed}F "
+        f"elapsed={elapsed:.1f}s"
+    )
+
+    return chip_id, passed, detail
+
+
+def _dump_chip_block(chip_id: int, detail: dict, expected_passed: int, expected_failed: int) -> None:
+    icon = "PASS" if detail["passed"] else "FAIL"
+    header = (
+        f"===== CHIP {chip_id} {icon} | rc={detail['exit_status']} | "
+        f"{detail['actual_passed']}P/{detail['actual_failed']}F "
+        f"(expected {expected_passed}P/{expected_failed}F) | "
+        f"elapsed={detail['elapsed_s']:.1f}s ====="
+    )
+    raw_text = detail["output"].rstrip("\n")
+
+    with _smoke_dump_lock:
+        logger.info(header)
+        for line in raw_text.splitlines():
+            raw_logger.info(line)
+        logger.info(f"===== CHIP {chip_id} END =====")
+
+
+def execute_smoke_test_parallel(katsu_ip: str, summary: ExecutionSummary) -> None:
+    expected_passed, expected_failed = _read_smoke_expected_counts()
+
+    label = (
+        f"STV Smoke Test (parallel via paramiko, {SMOKE_TEST_PARALLELISM} workers, "
+        f"{len(SMOKE_TEST_CHIPS)} chips, expecting "
+        f">= {expected_passed} passed / == {expected_failed} failed per chip)"
+    )
+
+    log_test_case_start(label)
+    logger.info(f"YAML contract source: {STV_YAML_PATH}")
+
+    overall_start = time.monotonic()
+    per_chip: Dict[int, dict] = {}
+
+    logger.info("#" * 70)
+    logger.info("SMOKE TEST OUTPUT (raw smoke_nexus output bracketed by CHIP N markers)")
+    logger.info("#" * 70)
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=SMOKE_TEST_PARALLELISM,
+        thread_name_prefix="smoke",
+    ) as pool:
+        futures = {
+            pool.submit(
+                _run_smoke_one_chip,
+                chip_id,
+                katsu_ip,
+                expected_passed,
+                expected_failed,
+            ): chip_id
+            for chip_id in SMOKE_TEST_CHIPS
+        }
+
+        not_done = set(futures.keys())
+
+        while not_done:
+            done, not_done = concurrent.futures.wait(
+                not_done,
+                timeout=SMOKE_TEST_HEARTBEAT_S,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+
+            if not done:
+                remaining_chips = sorted(futures[f] for f in not_done)
+                elapsed = time.monotonic() - overall_start
+                logger.info(
+                    f"[smoke heartbeat] still waiting on chips {remaining_chips} "
+                    f"after {elapsed:.0f}s"
+                )
+                continue
+
+            for fut in done:
+                chip_id, _passed, detail = fut.result()
+                per_chip[chip_id] = detail
+                _dump_chip_block(chip_id, detail, expected_passed, expected_failed)
+
+    overall_elapsed = time.monotonic() - overall_start
+
+    for chip_id in sorted(per_chip.keys()):
+        summary.record_test(
+            f"STV Smoke Test - Chip {chip_id}",
+            per_chip[chip_id]["passed"],
+        )
+
+    passing_chips = sum(1 for d in per_chip.values() if d["passed"])
+    total_chips = len(SMOKE_TEST_CHIPS)
+    aggregate_passed = passing_chips == total_chips
+
+    summary.record_test("STV Smoke Test (aggregate)", aggregate_passed)
+
+    logger.info("#" * 70)
+    logger.info(
+        f"Smoke parallel batch complete: {passing_chips}/{total_chips} chips passed "
+        f"in {overall_elapsed:.1f}s (aggregate={'PASS' if aggregate_passed else 'FAIL'})"
+    )
+    logger.info("#" * 70)
+
+
+def _cleanup_remote_smoke_nexus(katsu_ip: str) -> None:
+    try:
+        cleanup_client = paramiko.SSHClient()
+        cleanup_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        cleanup_client.connect(
+            hostname=katsu_ip,
+            username=KATSU_CPU_USERNAME,
+            password=KATSU_CPU_PASSWORD,
+            timeout=10,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        cleanup_client.exec_command(
+            "pkill -TERM smoke_nexus 2>/dev/null; sleep 2; "
+            "pkill -KILL smoke_nexus 2>/dev/null; true",
+            timeout=15,
+        )
+        cleanup_client.close()
+        logger.info("Best-effort smoke_nexus cleanup sent to Katsu.")
+    except Exception as e:
+        logger.warning(f"Smoke cleanup pass failed (harmless): {e}")
+
+
+# --- RNI LINK CHECK PER CHIP 0..7 ---
+def _parse_rni_per_chip(output: str, chip_ids: List[int]) -> Dict[int, Optional[bool]]:
+    """
+    Derive per-chip RNI results from a single parallel run's output.
+
+    unidiag's link-layer comparison emits one line per port keyed by chip, e.g.
+    "PASS: Chip 0 Port 0 VC 0 - RX Packets increased ..." (and "FAIL: Chip N ..."
+    on regression). A chip is a fail if it shows any FAIL line or its
+    chip<N>_rni.csv came back empty; a pass if it shows comparison data and no
+    failure. Returns None for a chip with no per-chip evidence, so the caller can
+    fall back to the run-wide verdict.
+    """
+    results: Dict[int, Optional[bool]] = {}
+    for chip_id in chip_ids:
+        empty = f"chip{chip_id}_rni.csv is empty" in output
+        has_fail = re.search(rf"^\s*FAIL:\s*Chip\s+{chip_id}\b", output, re.MULTILINE)
+        has_pass = re.search(rf"^\s*PASS:\s*Chip\s+{chip_id}\b", output, re.MULTILINE)
+        if empty or has_fail:
+            results[chip_id] = False
+        elif has_pass:
+            results[chip_id] = True
+        else:
+            results[chip_id] = None
+    return results
+
+
+def execute_rni_link_check(
+    runner: LocalUnidiagRunner,
+    summary: ExecutionSummary,
+    config_path: str,
+    chip_ids: Optional[List[int]] = None,
+):
+    """
+    Run RNI Link Check once for all chips in parallel.
+
+    The stv.yaml rni_port_test_script already launches hotpackets for every chip in
+    chip_list concurrently (& ... wait), so we set chip_list once and run a single
+    unidiag command instead of one run per chip. Per-chip PASS/FAIL is parsed from
+    the per-chip CSV result sections.
+    """
+    chip_ids = list(range(8)) if chip_ids is None else list(chip_ids)
+
+    log_test_case_start(f"RNI Link Check (chips {chip_ids}, parallel)")
+
+    if not update_chip_list(chip_ids, config_path):
+        logger.error(
+            "RNI Link Check skipped: could not set chip_list in %s.", config_path
+        )
+        for chip_id in chip_ids:
+            summary.record_test(f"RNI Link Check - Chip {chip_id}", False)
+        return
+
+    out = runner.run_command(STV_COMMANDS["rni_link_check"])
+    logger.info(f"--- Console Output ---\n{out}\n{'-' * 40}")
+
+    per_chip = _parse_rni_per_chip(out, chip_ids)
+    overall_pass = "[PASS]" in out and "[FAIL]" not in out
+
+    for chip_id in chip_ids:
+        status = per_chip[chip_id]
+        # Fall back to the run-wide verdict only when this chip's section is absent.
+        passed = overall_pass if status is None else status
+        summary.record_test(f"RNI Link Check - Chip {chip_id}", passed)
+        if not passed:
+            logger.error("RNI Link Check - Chip %s: no link data or failure detected.", chip_id)
+
+
+# --- MAIN RUNNER ---
+def execute_stv_tests(
+    runner: LocalUnidiagRunner,
+    summary: ExecutionSummary,
+    katsu_ip: str,
+    *,
+    config_path: str,
+    vindaloo_bmc_ip: str,
+    suite_run_dir: str,
+    run_timestamp: str,
+    sensor_max_duration_s: Optional[int],
+    skip_asic_sensors: bool,
+    skip_bmc_sensors: bool,
+) -> Tuple[Optional[subprocess.Popen], Optional[subprocess.Popen]]:
+    # Sensor CSV/logs use the same layout as manual runs (under SCRIPT_DIR).
+    sensor_data_root = SCRIPT_DIR
+    test_mapping = {
+        "Parallel ASIC Sensor Collection": PARALLEL_ASIC_SENSORS,
+        "Parallel BMC Sensor Collection": PARALLEL_BMC_SENSORS,
+        "STV Device Info Check": STV_COMMANDS["device_info_check"],
+        "STV PCIe Tree Check": STV_COMMANDS["pcie_tree_check"],
+        "STV Temperature Check": STV_COMMANDS["sensor_temp"],
+        "STV Voltage Check": STV_COMMANDS["sensor_volt"],
+        "STV Current Check": STV_COMMANDS["sensor_curr"],
+        "STV Log Check": STV_COMMANDS["log_check"],
+        "STV Smoke Test": STV_COMMANDS["smoke_test"],
+        "RNI Link Check": STV_COMMANDS["rni_link_check"],
+        "PCIe AER Check": STV_COMMANDS["pcie_aer"],
+    }
+
+    asic_sensor_proc: Optional[subprocess.Popen] = None
+    bmc_sensor_proc: Optional[subprocess.Popen] = None
+    sensor_cleanup_done = False
+
+    for test_name, command in test_mapping.items():
+        if command == PARALLEL_ASIC_SENSORS:
+            if skip_asic_sensors:
+                logger.info("Skipping %s (--skip-asic-sensors).", test_name)
+                continue
+
+            if not sensor_cleanup_done:
+                ensure_sensor_collectors_stopped(katsu_ip, vindaloo_bmc_ip)
+                sensor_cleanup_done = True
+
+            log_test_case_start(test_name)
+            asic_sensor_proc = start_asic_sensor_monitor(
+                katsu_ip=katsu_ip,
+                vindaloo_bmc_ip=vindaloo_bmc_ip,
+                sensor_data_root=sensor_data_root,
+                run_timestamp=run_timestamp,
+                duration_s=sensor_max_duration_s,
+                test_name="pcie_stv_suite",
+                suite_run_log_dir=suite_run_dir,
+            )
+            if asic_sensor_proc is not None:
+                summary.record_test(test_name, True)
+                logger.info("%s: PASS (collector started).", test_name)
+            else:
+                summary.record_test(test_name, False)
+                logger.error("%s: FAIL (could not start).", test_name)
+            continue
+
+        if command == PARALLEL_BMC_SENSORS:
+            if skip_bmc_sensors:
+                logger.info("Skipping %s (--skip-bmc-sensors).", test_name)
+                continue
+
+            if not sensor_cleanup_done:
+                ensure_sensor_collectors_stopped(katsu_ip, vindaloo_bmc_ip)
+                sensor_cleanup_done = True
+
+            log_test_case_start(test_name)
+            bmc_sensor_proc = start_bmc_sensor_monitor(
+                vindaloo_bmc_ip=vindaloo_bmc_ip,
+                sensor_data_root=sensor_data_root,
+                max_runtime_s=sensor_max_duration_s,
+                run_timestamp=run_timestamp,
+                suite_run_log_dir=suite_run_dir,
+            )
+            if bmc_sensor_proc is not None:
+                summary.record_test(test_name, True)
+                logger.info("%s: PASS (collector started).", test_name)
+            else:
+                summary.record_test(test_name, False)
+                logger.error("%s: FAIL (could not start).", test_name)
+            continue
+
+        if test_name == "RNI Link Check":
+            execute_rni_link_check(runner, summary, config_path)
+            continue
+
+        if test_name == "STV Smoke Test":
+            execute_smoke_test_parallel(katsu_ip, summary)
+            continue
+
+        log_test_case_start(test_name)
+
+        out = runner.run_command(command)
+        logger.info(f"--- Console Output ---\n{out}\n{'-' * 40}")
+
+        passed = "[PASS]" in out and "[FAIL]" not in out
+        summary.record_test(test_name, passed)
+
+        if not passed:
+            logger.error(f"{test_name} reported a failure or error.")
+
+    if asic_sensor_proc is not None or bmc_sensor_proc is not None:
+        time.sleep(2)
+
+    return asic_sensor_proc, bmc_sensor_proc
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Host Server -> Katsu PCIe/STV Validation Suite with Vindaloo Blackbox Capture"
+    )
+
+    parser.add_argument(
+        "--katsu-cpu-ip",
+        default=None,
+        help=(
+            "Katsu CPU IP. Optional if setting.CPU_ssh.Ip_address is set in config_t2.yaml. "
+            "When provided, overwrites config before the run."
+        ),
+    )
+
+    parser.add_argument(
+        "--vindaloo-bmc-ip",
+        default=None,
+        help=(
+            "Vindaloo BMC IP. Optional if setting.BMC_ssh.Ip_address is set in config_t2.yaml. "
+            "When provided, overwrites config before the run."
+        ),
+    )
+
+    parser.add_argument(
+        "--slot",
+        choices=sorted(SLOT_CONFIG_MAP.keys()) + ["auto"],
+        default="auto",
+        help=(
+            "Physical slot to run. Selects a per-unit unidiag config so multiple "
+            "operators can run in parallel without sharing one config file: "
+            + ", ".join(f"{k}->{os.path.basename(v)}" for k, v in sorted(SLOT_CONFIG_MAP.items()))
+            + ". Default 'auto' locks the first free slot. Overrides --config-path unless "
+            "--config-path is explicitly set with --slot auto."
+        ),
+    )
+
+    parser.add_argument(
+        "--config-path",
+        default=CONFIG_PATH,
+        help=(
+            f"Path to a specific unidiag config YAML (default: {CONFIG_PATH}). "
+            "Only used when --slot auto and this is set to a non-default path."
+        ),
+    )
+
+    parser.add_argument(
+        "--results-dir",
+        default=os.path.join(SCRIPT_DIR, "results_pcie"),
+        help="Base directory to store results",
+    )
+
+    parser.add_argument(
+        "--skip-asic-sensors",
+        action="store_true",
+        help="Do not run custom_sensor_monitor.py in parallel",
+    )
+
+    parser.add_argument(
+        "--skip-bmc-sensors",
+        action="store_true",
+        help="Do not run display_sensors_stv.py in parallel",
+    )
+
+    parser.add_argument(
+        "--asic-sensor-duration",
+        type=int,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Optional safety cap for sensor collectors. "
+            "Default: run for the STV suite duration, then stop and export CSV/SQLite."
+        ),
+    )
+
+    parser.add_argument(
+        "--background-sensors",
+        action="store_true",
+        help=(
+            "Leave collectors running after STV (old behavior). "
+            "Default: stop collectors when STV finishes and wait for data export."
+        ),
+    )
+
+    parser.add_argument(
+        "--expected-rev",
+        choices=["A0", "B0", "a0", "b0"],
+        default=None,
+        help=(
+            "Expected Katsu silicon revision (A0=EVT, B0=DVT). "
+            f"Default: this script's target ({EXPECTED_KATSU_REV}={KATSU_REV_TO_PHASE.get(EXPECTED_KATSU_REV)}). "
+            "The run aborts if the unit's revision differs."
+        ),
+    )
+
+    parser.add_argument(
+        "--skip-rev-check",
+        action="store_true",
+        help="Skip the EVT/DVT silicon-revision guard (use only if switchclid is unavailable).",
+    )
+
+    args = parser.parse_args()
+
+    # Resolve which config to use and lock it. The lock is held for the whole run
+    # and auto-released by the OS on exit (normal finish, Ctrl+C, kill, or crash).
+    if args.slot != "auto":
+        # Explicit slot requested: use exactly that one, fail if it's busy.
+        config_path = os.path.abspath(SLOT_CONFIG_MAP[args.slot])
+        slot_label = args.slot
+        config_lock = acquire_config_lock(config_path)
+        if config_lock is None:
+            logger.error("=" * 70)
+            logger.error(
+                "Slot '%s' is already running in another terminal (config locked: %s).",
+                slot_label,
+                config_path,
+            )
+            logger.error(
+                "Wait for that run to finish, or start a different slot (--slot t1/t2/t3) "
+                "or omit --slot to auto-pick a free one."
+            )
+            logger.error("=" * 70)
+            sys.exit(1)
+    elif args.config_path != CONFIG_PATH:
+        # Explicit one-off config with --slot auto: use exactly that file.
+        config_path = os.path.abspath(args.config_path)
+        slot_label = os.path.basename(config_path)
+        config_lock = acquire_config_lock(config_path)
+        if config_lock is None:
+            logger.error(
+                "Config '%s' is already locked by another run. Aborting.", config_path
+            )
+            sys.exit(1)
+    else:
+        # Auto mode: lock the first free slot.
+        slot_label, config_path, config_lock = auto_acquire_free_slot()
+        if config_lock is None:
+            logger.error("=" * 70)
+            logger.error(
+                "All slots (%s) are currently in use.",
+                ", ".join(sorted(SLOT_CONFIG_MAP.keys())),
+            )
+            logger.error("Wait for a run to finish, then start again.")
+            logger.error("=" * 70)
+            sys.exit(1)
+        logger.info("Auto-selected free slot '%s'.", slot_label)
+
+    logger.info("Acquired exclusive lock for slot '%s' (config: %s)", slot_label, config_path)
+
+    # In auto mode, the slot is chosen for you; if you also passed target IPs they will
+    # be written into the chosen slot's config. If you did NOT pass IPs, the run uses the
+    # IPs already in that slot's config (treat each slot as a fixed unit).
+    if args.slot == "auto" and (args.katsu_cpu_ip or args.vindaloo_bmc_ip):
+        logger.warning(
+            "Auto-selected slot '%s' will be programmed with the IPs you passed "
+            "(Katsu=%s, BMC=%s). Use an explicit --slot if a slot must map to a fixed unit.",
+            slot_label,
+            args.katsu_cpu_ip or "(from config)",
+            args.vindaloo_bmc_ip or "(from config)",
+        )
+
+    # Point unidiag STV commands at the selected config for this run.
+    global STV_COMMANDS
+    STV_COMMANDS = build_stv_commands(config_path)
+
+    try:
+        cpu_ip, vindaloo_bmc_ip = resolve_target_ips(
+            config_path,
+            args.katsu_cpu_ip,
+            args.vindaloo_bmc_ip,
+        )
+    except ValueError as exc:
+        logger.error("%s", exc)
+        release_config_lock(config_lock)
+        sys.exit(2)
+
+    # Guard the physical unit, not just the config slot: refuse to start a second
+    # run against the same Katsu (e.g. same IP launched from two terminals), which
+    # would otherwise kill the first run's nexus_snort/sensor collection.
+    target_lock = acquire_target_lock(cpu_ip, os.path.dirname(config_path))
+    if target_lock is None:
+        logger.error("=" * 70)
+        logger.error(
+            "Another run is already targeting Katsu %s on this host.", cpu_ip
+        )
+        logger.error(
+            "Two runs against the same unit would clobber each other's collectors. "
+            "Wait for that run to finish, or target a different unit."
+        )
+        logger.error("=" * 70)
+        release_config_lock(config_lock)
+        sys.exit(1)
+
+    logger.info("Acquired exclusive target lock for Katsu %s.", cpu_ip)
+
+    base_results_dir = os.path.abspath(args.results_dir)
+    os.makedirs(base_results_dir, exist_ok=True)
+
+    summary = ExecutionSummary()
+    runner = LocalUnidiagRunner()
+
+    vindaloo_ssh = SSHAdapter(vindaloo_bmc_ip)
+    hw_diag = HardwareDiagnostics(vindaloo_ssh)
+
+    asic_sensor_proc: Optional[subprocess.Popen] = None
+    bmc_sensor_proc: Optional[subprocess.Popen] = None
+    dynamic_results_dir: Optional[str] = None
+    run_timestamp: Optional[str] = None
+    sync_sensor_export = not args.background_sensors
+
+    try:
+        run_timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        safe_katsu_ip_string = cpu_ip.replace(".", "_")
+        safe_bmc_ip_string = vindaloo_bmc_ip.replace(".", "_")
+
+        run_dir_name = f"katsu_cpu_{safe_katsu_ip_string}_vindaloo_bmc_{safe_bmc_ip_string}_{run_timestamp}"
+
+        dynamic_results_dir = os.path.join(base_results_dir, run_dir_name)
+        os.makedirs(dynamic_results_dir, exist_ok=True)
+
+        log_file_path = os.path.join(dynamic_results_dir, "pcie_stv_run.log")
+        file_handler = logging.FileHandler(log_file_path)
+        file_handler.setFormatter(_smart_formatter)
+        logger.addHandler(file_handler)
+
+        logger.info(f"Logging initialized. Output directory: {dynamic_results_dir}")
+
+        # Fail fast if the operator points a DVT script at an EVT unit (or vice versa).
+        if args.skip_rev_check:
+            logger.warning("Skipping Katsu EVT/DVT silicon-revision guard (--skip-rev-check).")
+        else:
+            try:
+                enforce_katsu_revision(cpu_ip, args.expected_rev or EXPECTED_KATSU_REV)
+            except RuntimeError as exc:
+                logger.error("=" * 70)
+                logger.error("%s", exc)
+                logger.error("=" * 70)
+                sys.exit(3)
+
+        log_katsu_tool_versions(cpu_ip)
+        log_katsu_bios_info(cpu_ip)
+
+        if not runner.sync_config_targets(cpu_ip, vindaloo_bmc_ip, config_path):
+            logger.error("Aborting suite: Could not update config_t2.yaml.")
+            sys.exit(1)
+
+        # ------------------------------------------------------------------
+        # PRE-SUITE VINDALOO BLACKBOX FLOW
+        # ------------------------------------------------------------------
+        vindaloo_ssh.connect()
+
+        bb_initial = hw_diag.read_ucd_blackbox()
+        summary.record_test("Pre-Suite Vindaloo UCD Blackbox Read", bool(bb_initial))
+
+        max_initial_ok = hw_diag.dump_max31732_if_blackbox_asserted(bb_initial)
+        summary.record_test("Pre-Suite MAX31732 Thermal Debug", max_initial_ok)
+
+        bb_clear_ok = hw_diag.clear_ucd_blackbox()
+        summary.record_test("Pre-Suite Clear Vindaloo UCD Blackbox", bb_clear_ok)
+
+        # ------------------------------------------------------------------
+        # KATSU PCIe/STV SUITE (test_mapping includes parallel sensor collectors)
+        # ------------------------------------------------------------------
+        suite_start = time.monotonic()
+        asic_sensor_proc, bmc_sensor_proc = execute_stv_tests(
+            runner,
+            summary,
+            cpu_ip,
+            config_path=config_path,
+            vindaloo_bmc_ip=vindaloo_bmc_ip,
+            suite_run_dir=dynamic_results_dir,
+            run_timestamp=run_timestamp,
+            sensor_max_duration_s=args.asic_sensor_duration,
+            skip_asic_sensors=args.skip_asic_sensors,
+            skip_bmc_sensors=args.skip_bmc_sensors,
+        )
+        suite_elapsed = time.monotonic() - suite_start
+        logger.info("STV suite finished in %.1f minutes.", suite_elapsed / 60.0)
+
+        if sync_sensor_export:
+            finalize_sensor_collectors(
+                summary,
+                asic_sensor_proc,
+                bmc_sensor_proc,
+                suite_elapsed_s=suite_elapsed,
+            )
+        else:
+            logger.info(
+                "Background sensor mode: collectors still running. "
+                "See asic_sensor_collector.log / bmc_sensor_collector.log in the suite run folder."
+            )
+
+        # ------------------------------------------------------------------
+        # POST-SUITE VINDALOO BLACKBOX FLOW
+        # ------------------------------------------------------------------
+        bb_final = hw_diag.read_ucd_blackbox()
+        summary.record_test("Post-Suite Vindaloo UCD Blackbox Read", bool(bb_final))
+
+        max_final_ok = hw_diag.dump_max31732_if_blackbox_asserted(bb_final)
+        summary.record_test("Post-Suite MAX31732 Thermal Debug", max_final_ok)
+
+        if hw_diag.blackbox_has_thermal_assertion(bb_final):
+            summary.record_test("Post-Suite Thermal Fault Assertion Detected", False)
+
+    except KeyboardInterrupt:
+        logger.warning("Execution interrupted by user.")
+
+    except Exception as e:
+        logger.error(f"Critical suite failure: {e}", exc_info=True)
+        sys.exit(1)
+
+    finally:
+        if sync_sensor_export:
+            if asic_sensor_proc is not None and asic_sensor_proc.poll() is None:
+                wait_for_asic_sensor_monitor(asic_sensor_proc, stop_if_running=True)
+            if bmc_sensor_proc is not None and bmc_sensor_proc.poll() is None:
+                wait_for_bmc_sensor_monitor(bmc_sensor_proc, stop_if_running=True)
+
+        try:
+            vindaloo_ssh.disconnect()
+        except Exception:
+            pass
+
+        _cleanup_remote_smoke_nexus(cpu_ip)
+
+        if not update_chip_list(list(range(8)), config_path):
+            logger.error("Failed to restore chip_list to default [0..7].")
+        else:
+            logger.info(
+                "Restored chip_list in %s to default [0, 1, 2, 3, 4, 5, 6, 7].",
+                os.path.basename(config_path),
+            )
+
+        summary.print_summary()
+        logger.info("Suite Execution Complete.")
+        if dynamic_results_dir:
+            logger.info("Suite run log directory: %s", dynamic_results_dir)
+            logger.info("Parallel collector data (same paths as manual runs):")
+            logger.info("  ASIC CSV: %s/results_custom_sensors/", SCRIPT_DIR)
+            logger.info("  BMC CSV:  %s/results_sensors/", SCRIPT_DIR)
+
+        release_config_lock(target_lock)
+        release_config_lock(config_lock)
+        logger.info("Released lock for slot '%s' (Katsu %s).", slot_label, cpu_ip)
+
+
+if __name__ == "__main__":
+    main()
